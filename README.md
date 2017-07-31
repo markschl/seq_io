@@ -51,11 +51,11 @@ Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.9.5) using Rus
   where they are being iterated over and then sent back to the main thread
   where there is another iteration over the records (the latter only in seq_io)
 
-### FASTA
+**FASTA**
 
 ![FASTQ readers](bench_results/bench_fasta_simple.png)
   
-### FASTQ
+**FASTQ**
 
 ![FASTQ readers](bench_results/bench_fastq_simple.png)
 
