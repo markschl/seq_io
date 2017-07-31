@@ -1,0 +1,24 @@
+[package]
+name = "seq_io"
+version = "0.1.0"
+authors = ["<markschl19@gmail.com>"]
+description = ""
+license = "MIT"
+repository = ""
+documentation = ""
+readme = "README.md"
+keywords = ["bio", "fasta", "fastq", "parser"]
+
+[dependencies]
+memchr = "^1"
+buf_redux = "^0.6"
+scoped_threadpool ="^0.1"
+crossbeam = "^0.2"
+
+[dev-dependencies]
+bio = "^0.14"
+lazy_static = "^0.2"
+fastq = "*"
+
+[profile.bench]
+lto = true
