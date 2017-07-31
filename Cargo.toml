@@ -9,7 +9,9 @@ documentation = ""
 readme = "README.md"
 keywords = ["bio", "fasta", "fastq", "parser"]
 exclude = [
-    "bench_results/",
+    "bench_results/bench.txt",
+    "bench_results/bench_fasta.png",
+    "bench_results/bench_fastq.png",
 ]
 
 [dependencies]
