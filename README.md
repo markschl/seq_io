@@ -2,7 +2,7 @@
 # FASTA and FASTQ parsing in Rust
 
 
-![docs.rs](https://docs.rs/mio/badge.svg)
+![docs.rs](https://docs.rs/seq_io/badge.svg)
 
 This library provides an(other) attempt at high performance FASTA and FASTQ parsing.
 There are many similarities to the excellent [fastq-rs](https://github.com/aseyboldt/fastq-rs)
