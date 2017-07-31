@@ -1,6 +1,9 @@
 
 # FASTA and FASTQ parsing in Rust
 
+
+![docs.rs](https://docs.rs/mio/badge.svg)
+
 This library provides an(other) attempt at high performance FASTA and FASTQ parsing.
 There are many similarities to the excellent [fastq-rs](https://github.com/aseyboldt/fastq-rs)
 crate. However, the API that provides streaming iterators where possible.
@@ -14,6 +17,8 @@ buffer is reached and an incomplete record is moved to the start.
 
 **Note:** Make sure to compile with LTO enabled because calls to *buf\_redux* functions 
 are not inlined otherwise.
+
+[View API documentation](https://docs.rs/seq_io)
 
 ## Multi-threaded processing
 The functions from the `parallel` module provide possibilities to send FASTQ/FASTA
