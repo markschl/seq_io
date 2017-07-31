@@ -2,12 +2,15 @@
 name = "seq_io"
 version = "0.1.0"
 authors = ["<markschl19@gmail.com>"]
-description = ""
+description = "Performant FASTA and FASTQ readers"
 license = "MIT"
-repository = ""
+repository = "https://github.com/markschl/seq_io"
 documentation = ""
 readme = "README.md"
 keywords = ["bio", "fasta", "fastq", "parser"]
+exclude = [
+    "bench_results/",
+]
 
 [dependencies]
 memchr = "^1"
