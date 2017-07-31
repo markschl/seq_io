@@ -23,7 +23,7 @@ crossbeam = "^0.2"
 [dev-dependencies]
 bio = "^0.14"
 lazy_static = "^0.2"
-fastq = "*"
+fastq = "^0.5"
 
 [profile.bench]
 lto = true
