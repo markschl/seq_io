@@ -55,9 +55,9 @@ fn test_fasta_reader() {
 
       // try different initial capacities to test
       // buffer growing feature
-      for cap in 1 .. 100 {
+      for cap in 3 .. 100 {
          let mut exp_iter = expected.iter().zip(&exp_seqs);
-         let mut reader = fasta::Reader::new(fasta.as_slice());
+         let mut reader = fasta::Reader::with_capacity(fasta.as_slice(), cap);
           while let Some((&(ref id, ref desc, _), &(ref raw_seq, ref seq))) = exp_iter.next() {
               let record = reader.next().unwrap().expect(&format!("Error reading record at cap. {}", cap));
 
@@ -120,9 +120,9 @@ fn test_fastq_reader() {
 
    // try different initial capacities to test
    // buffer growing feature
-   for cap in 1 .. 100 {
+   for cap in 3 .. 100 {
       let mut exp_iter = expected.iter();
-      let mut reader = fastq::Reader::new(FASTQ);
+      let mut reader = fastq::Reader::with_capacity(FASTQ, cap);
       while let Some(&(ref id, ref desc, ref seq, ref qual)) = exp_iter.next() {
            let record = reader.next().unwrap().expect(&format!("Error reading record at cap. {}", cap));
 
