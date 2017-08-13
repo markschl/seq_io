@@ -207,8 +207,9 @@ impl<R, E, O> ParallelRecordsets<R, E, O>
 }
 
 
+#[macro_export]
 macro_rules! parallel_record_impl {
-    ($name:ident, $rdr:ty, $record:ty, $io_r:tt, $err:ty) => {
+    ($name:ident, $io_r:tt, $rdr:ty, $record:ty, $err:ty) => {
 
         pub fn $name<$io_r, O, W, F>(parser: $rdr, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<(), $err>
             where $io_r: io::Read + Send,
@@ -217,11 +218,11 @@ macro_rules! parallel_record_impl {
                   W: Fn($record, &mut O),
                   F: FnMut($record, &O) -> bool,
         {
-            let reader = ResultSetParser::new(parser);
+            let reader = $crate::parallel::ReusableReader::new(parser);
 
-            read_parallel(reader, n_threads, queue_len, |d| {
+            $crate::parallel::read_parallel(reader, n_threads, queue_len, |d| {
                 let mut iter = d.0.into_iter();
-                let mut out: &mut Vec<O> = &mut d.1;
+                let out: &mut Vec<O> = &mut d.1;
                 for mut x in out.iter_mut().zip(&mut iter) {
                     work(x.1, &mut x.0);
                 }
@@ -245,41 +246,31 @@ macro_rules! parallel_record_impl {
      };
 }
 
-parallel_record_impl!(parallel_fasta, fasta::Reader<R>, fasta::RefRecord, R, fasta::ParseError);
+parallel_record_impl!(parallel_fasta, R, fasta::Reader<R>, fasta::RefRecord, fasta::ParseError);
 
-parallel_record_impl!(parallel_fastq, fastq::Reader<R>, fastq::RefRecord, R, fastq::ParseError);
-
-
-
-struct ResultSetParser<P, O>(P, PhantomData<O>);
+parallel_record_impl!(parallel_fastq, R, fastq::Reader<R>, fastq::RefRecord, fastq::ParseError);
 
 
-impl<P, O> ResultSetParser<P, O> {
-    pub fn new(p: P) -> ResultSetParser<P, O> {
-        ResultSetParser(p, PhantomData)
+pub struct ReusableReader<P, O>(P, PhantomData<O>);
+
+
+impl<P, O> ReusableReader<P, O> {
+    pub fn new(p: P) -> ReusableReader<P, O> {
+        ReusableReader(p, PhantomData)
     }
 }
 
-impl<P, O> Reader for ResultSetParser<P, O>
+impl<P, O> Reader for ReusableReader<P, O>
     where P: Reader,
           O: Default + Send {
 
-    type DataSet = ResultSet<P::DataSet, O>;
+    type DataSet = (P::DataSet, O);
     type Err = P::Err;
     fn fill_data(&mut self, data: &mut Self::DataSet) -> Option<Result<(), P::Err>> {
         self.0.fill_data(&mut data.0)
     }
 }
 
-struct ResultSet<R, O>(pub R, pub O) where R: Default + Send, O: Default + Send;
-
-impl<R, O> Default for ResultSet<R, O>
-    where R: Default + Send, O: Default + Send
-{
-    fn default() -> Self {
-        ResultSet(R::default(), O::default())
-    }
-}
 
 // trait impls
 
