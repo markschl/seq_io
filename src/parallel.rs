@@ -251,6 +251,32 @@ parallel_record_impl!(parallel_fasta, R, fasta::Reader<R>, fasta::RefRecord, fas
 parallel_record_impl!(parallel_fastq, R, fastq::Reader<R>, fastq::RefRecord, fastq::ParseError);
 
 
+/// Wrapper for `parallel::Reader` instances allowing
+/// the output to be reused in order to save allocations.
+/// Used by `parallel_fasta`/`parallel_fastq`
+///
+/// ```no_run
+/// use seq_io::fastq::{Reader,Record,RecordSet};
+/// use seq_io::parallel::{read_parallel,ReusableReader};
+///
+/// let inner = Reader::from_path("seqs.fastq").unwrap();
+/// let reader = ReusableReader::new(inner);
+///
+/// read_parallel(reader, 4, 2, |&mut (ref record_set, ref mut out): &mut (RecordSet, Vec<bool>)| {
+///     out.clear();
+///     for record in record_set {
+///         let found = record.seq().windows(3).position(|s| s == b"AAA").is_some();
+///         out.push(found);
+///     }
+/// }, |record_sets| {
+///     while let Some(result) = record_sets.next() {
+///         let &(ref record_set, ref out) = result.unwrap().0;
+///         for (record, found) in record_set.into_iter().zip(out) {
+///             // ...
+///         }
+///     }
+/// });
+/// ```
 pub struct ReusableReader<P, O>(P, PhantomData<O>);
 
 
