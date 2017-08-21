@@ -60,8 +60,8 @@
 //!         if *found {
 //!             record.write(&mut writer).unwrap();
 //!         }
-//!         // `false` will stop the reader
-//!         true
+//!         // Some(value) will stop the reader, and the value will be returned
+//!         None
 //! }).unwrap();
 //! ```
 
@@ -211,12 +211,12 @@ impl<R, E, O> ParallelRecordsets<R, E, O>
 macro_rules! parallel_record_impl {
     ($name:ident, $io_r:tt, $rdr:ty, $record:ty, $err:ty) => {
 
-        pub fn $name<$io_r, O, W, F>(parser: $rdr, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<(), $err>
+        pub fn $name<$io_r, O, W, F, Out>(parser: $rdr, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<Option<Out>, $err>
             where $io_r: io::Read + Send,
                   O: Default + Send,
                   W: Send + Sync,
                   W: Fn($record, &mut O),
-                  F: FnMut($record, &O) -> bool,
+                  F: FnMut($record, &O) -> Option<Out>,
         {
             let reader = $crate::parallel::ReusableReader::new(parser);
 
@@ -235,12 +235,12 @@ macro_rules! parallel_record_impl {
                 while let Some(result) = records.next() {
                     let (r, _) = result?;
                     for x in r.0.into_iter().zip(&r.1) {
-                        if ! func(x.0, x.1) {
-                            break;
+                        if let Some(out) = func(x.0, x.1) {
+                            return Ok(Some(out));
                         }
                     }
                 }
-                Ok(())
+                Ok(None)
             })
         }
      };
@@ -302,13 +302,13 @@ impl<P, O> Reader for ReusableReader<P, O>
 ///
 /// `parallel_fasta`/`parallel_fastq` provide the same functionality for now
 /// (implemented using `parallel_record_impl` macro)
-pub fn parallel_records<P, O, W, F, Out>(parser: P, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<(), P::Err>
+pub fn parallel_records<P, O, W, F, Out>(parser: P, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<Option<Out>, P::Err>
     where P: Reader,
           for<'a> &'a P::DataSet: IntoIterator,
           O: Default + Send,
           W: Send + Sync,
           W: Fn(<&P::DataSet as IntoIterator>::Item, &mut O),
-          F: FnMut(<&P::DataSet as IntoIterator>::Item, &O) -> bool,
+          F: FnMut(<&P::DataSet as IntoIterator>::Item, &O) -> Option<Out>,
 {
     let reader = ReusableReader(parser, PhantomData);
 
@@ -327,12 +327,12 @@ pub fn parallel_records<P, O, W, F, Out>(parser: P, n_threads: u32, queue_len: u
         while let Some(result) = records.next() {
             let (r, _) = result?;
             for x in r.0.into_iter().zip(&r.1) {
-                if ! func(x.0, x.1) {
-                    break;
+                if let Some(out) = func(x.0, x.1) {
+                    return Ok(Some(out));
                 }
             }
         }
-        Ok(())
+        Ok(None)
     })
 }
 
