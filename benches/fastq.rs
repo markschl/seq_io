@@ -168,7 +168,7 @@ bench!(fastq_iter_500_recset__parallel_seqio, 500, false, cursor, {
 
 bench!(fastq_iter_500_records__parallel_seqio, 500, false, cursor, {
     let reader = seq_io::fastq::Reader::new(cursor);
-    seq_io::parallel::parallel_fastq::<_, (), _, _>(reader, 2, 2, |_, _| {}, |_, _| {true}).unwrap();
+    seq_io::parallel::parallel_fastq::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| {None}).unwrap();
 });
 
 // bench_static500!(fastq_iter_500_static__parallel_seqio, cursor, {
