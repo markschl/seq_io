@@ -242,7 +242,7 @@ impl<R, S> Reader<R, S>
             } else if self.position.start == 0 {
                 // first record -> buffer too small, grow until big enough
                 let cap = self.buffer.capacity();
-                let new_size = self.grow_strategy.new_size(cap);
+                let new_size = self.grow_strategy.new_size(cap).ok_or(ParseError::BufferOverflow)?;
                 let additional = new_size - cap;
                 self.buffer.grow(additional);
 
@@ -294,16 +294,18 @@ pub enum ParseError {
     EmptyInput,
     InvalidStart(usize),
     UnexpectedEnd,
+    BufferOverflow,
 }
 
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &ParseError::Io(ref e) => write!(f, "{}", e),
-            &ParseError::EmptyInput => write!(f, "Input empty"),
-            &ParseError::InvalidStart(pos) => write!(f, "Expected > at file start (position: {})", pos),
-            &ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
+        match *self {
+            ParseError::Io(ref e) => write!(f, "{}", e),
+            ParseError::EmptyInput => write!(f, "Input empty"),
+            ParseError::InvalidStart(pos) => write!(f, "Expected > at file start (position: {})", pos),
+            ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
+            ParseError::BufferOverflow => write!(f, "Buffer overflow"),
         }
     }
 }

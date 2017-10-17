@@ -293,7 +293,7 @@ impl<R, S> Reader<R, S>
             } else if self.position.pos.0 == 0 {
                 // first record already incomplete -> buffer too small, grow until big enough
                 let cap = self.buffer.capacity();
-                let new_size = self.grow_strategy.new_size(cap);
+                let new_size = self.grow_strategy.new_size(cap).ok_or(ParseError::BufferOverflow)?;
                 let additional = new_size - cap;
                 self.buffer.grow(additional);
                 fill_buf(&mut self.buffer)?;
@@ -350,16 +350,18 @@ pub enum ParseError {
     UnequalLengths(usize, usize),
     Unexpected(u8, u8),
     UnexpectedEnd,
+    BufferOverflow,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &ParseError::Io(ref e) => write!(f, "{}", e),
-            &ParseError::EmptyInput => write!(f, "Input empty"),
-            &ParseError::UnequalLengths(seq, qual) => write!(f, "Unequal lengths: sequence length is {}, but quality length is {}", seq, qual),
-            &ParseError::Unexpected(exp, found) => write!(f, "Expected '{}' but found '{}'", exp as char, found as char),
-            &ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
+        match *self {
+            ParseError::Io(ref e) => write!(f, "{}", e),
+            ParseError::EmptyInput => write!(f, "Input empty"),
+            ParseError::UnequalLengths(seq, qual) => write!(f, "Unequal lengths: sequence length is {}, but quality length is {}", seq, qual),
+            ParseError::Unexpected(exp, found) => write!(f, "Expected '{}' but found '{}'", exp as char, found as char),
+            ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
+            ParseError::BufferOverflow => write!(f, "Buffer overflow"),
         }
     }
 }
