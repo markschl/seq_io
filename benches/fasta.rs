@@ -116,7 +116,7 @@ bench!(fasta_iter_500_recset__parallel_seqio, 500, None, cursor, {
 
 bench!(fasta_iter_500_records__parallel_seqio, 500, None, cursor, {
     let reader = fasta::Reader::new(cursor);
-    seq_io::parallel::parallel_fasta::<_, (), _, _>(reader, 2, 2, |_, _| {}, |_, _| {true}).unwrap();
+    seq_io::parallel::parallel_fasta::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| {None}).unwrap();
 });
 
 // read into record sets without parallelism

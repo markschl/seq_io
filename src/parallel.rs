@@ -46,13 +46,14 @@
 //!
 //! ```no_run
 //! use seq_io::fastq::{Reader,Record};
+//! use seq_io::parallel::parallel_fastq;
 //! use std::fs::File;
 //! use std::io::BufWriter;
 //!
 //! let reader = Reader::from_path("seqs.fastq").unwrap();
 //! let mut writer = BufWriter::new(File::create("filtered.fastq").unwrap());
 //!
-//! seq_io::parallel::parallel_fastq(reader, 4, 2,
+//! parallel_fastq(reader, 4, 2,
 //!     |record, found| { // runs in worker
 //!         *found = record.seq().windows(3).position(|s| s == b"AAA").is_some();
 //!     },
@@ -60,8 +61,10 @@
 //!         if *found {
 //!             record.write(&mut writer).unwrap();
 //!         }
-//!         // Some(value) will stop the reader, and the value will be returned
-//!         None
+//!         // Some(value) will stop the reader, and the value will be returned.
+//!         // In the case of never stopping, we need to give the compiler a hint about the
+//!         // type parameter, thus the special 'turbofish' notation is needed.
+//!         None::<()>
 //! }).unwrap();
 //! ```
 
