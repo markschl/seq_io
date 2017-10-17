@@ -9,9 +9,7 @@ documentation = "https://docs.rs/seq_io"
 readme = "README.md"
 keywords = ["bio", "fasta", "fastq", "parser"]
 exclude = [
-    "bench_results/bench.txt",
-    "bench_results/bench_fasta.png",
-    "bench_results/bench_fastq.png",
+    "bench_results/*",
 ]
 
 [dependencies]
