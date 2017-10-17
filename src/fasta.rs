@@ -386,6 +386,11 @@ pub trait Record {
     fn head(&self) -> &[u8];
     /// Return the FASTA sequence as byte slice
     fn seq(&self) -> &[u8];
+    /// Write the record to the given `io::Write` instance. The sequence will occupy one line only.
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
+    /// Write the record to the given `io::Write` instance. The sequence is wrapped to produce
+    ///  multi-line FASTA with a maximum width specified by `wrap`.
+    fn write_wrap<W: io::Write>(&self, writer: &mut W, wrap: usize) -> io::Result<()>;
 
     fn id_bytes(&self) -> &[u8] {
         self.head().split(|b| *b == b' ').next().unwrap()
@@ -418,10 +423,6 @@ pub trait Record {
         let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
         Ok((h.next().unwrap(), h.next()))
     }
-
-    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
-        write_to(writer, self.head(), self.seq())
-    }
 }
 
 
@@ -438,8 +439,19 @@ impl<R, S> Record for Reader<R, S>
     fn seq(&self) -> &[u8] {
         self.position.seq(self.get_buf())
     }
-}
 
+    #[inline]
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        write_head(writer, self.head())?;
+        write_seq_iter(writer, self.seq_lines())
+    }
+
+    #[inline]
+    fn write_wrap<W: io::Write>(&self, writer: &mut W, wrap: usize) -> io::Result<()> {
+        write_head(writer, self.head())?;
+        write_wrap_seq_iter(writer, self.seq_lines(), wrap)
+    }
+}
 
 
 /// A FASTA record that borrows data from a buffer.
@@ -465,6 +477,18 @@ impl<'a> Record for RefRecord<'a> {
     #[inline]
     fn seq(&self) -> &[u8] {
         self.position.seq(self.buffer)
+    }
+
+    #[inline]
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        write_head(writer, self.head())?;
+        write_seq_iter(writer, self.seq_lines())
+    }
+
+    #[inline]
+    fn write_wrap<W: io::Write>(&self, writer: &mut W, wrap: usize) -> io::Result<()> {
+        write_head(writer, self.head())?;
+        write_wrap_seq_iter(writer, self.seq_lines(), wrap)
     }
 }
 
@@ -530,6 +554,17 @@ impl Record for OwnedRecord {
     fn seq(&self) -> &[u8] {
         &self.seq
     }
+
+    #[inline]
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        write_to(writer, &self.head, &self.seq)
+    }
+
+    #[inline]
+    fn write_wrap<W: io::Write>(&self, writer: &mut W, wrap: usize) -> io::Result<()> {
+        write_head(writer, &self.head)?;
+        write_wrap_seq(writer, &self.seq, wrap)
+    }
 }
 
 
@@ -586,31 +621,123 @@ impl<'a> Iterator for RecordSetIter<'a> {
 }
 
 
-/// Helper function for writing data (not necessarily stored in a `Record` instance)
-/// to the FASTA format
-pub fn write_to<W: io::Write>(writer: &mut W, head: &[u8], seq: &[u8]) -> io::Result<usize> {
-    let mut n = 0;
-    n += writer.write(b">")?;
-    n += writer.write(head)?;
-    n += writer.write(b"\n")?;
-    n += writer.write(seq)?;
-    n += writer.write(b"\n")?;
-    Ok(n)
+/// Writes data (not necessarily stored in a `Record` instance) to the FASTA format.
+#[inline]
+pub fn write_to<W>(writer: &mut W, head: &[u8], seq: &[u8])
+    -> io::Result<()>
+    where W: io::Write
+{
+    write_head(writer, head.as_ref())?;
+    write_seq(writer, seq)
 }
 
-/// Helper function for writing data (not necessarily stored in a `Record` instance)
-/// to the FASTA format. The ID and description parts of the header are supplied separately
-/// instead of a whole header line
-pub fn write_parts<W: io::Write>(writer: &mut W, id: &[u8], desc: Option<&[u8]>, seq: &[u8]) -> io::Result<usize> {
-    let mut n = 0;
-    n += writer.write(b">")?;
-    n += writer.write(id)?;
+/// Writes data to the FASTA format. ID and description parts of the header are supplied
+/// separately instead of a whole header line.
+#[inline]
+pub fn write_parts<W>(writer: &mut W, id: &[u8], desc: Option<&[u8]>, seq: &[u8])
+    -> io::Result<()>
+    where W: io::Write
+{
+    write_id_desc(writer, id, desc)?;
+    write_seq(writer, seq)
+}
+
+/// Writes data to the FASTA format. Wraps the sequence to produce multi-line FASTA
+/// with a maximum width specified by the `wrap` parameter.
+#[inline]
+pub fn write_wrap<W>(writer: &mut W, id: &[u8], desc: Option<&[u8]>, seq: &[u8], wrap: usize)
+    -> io::Result<()>
+    where W: io::Write
+{
+    write_id_desc(writer, id, desc)?;
+    write_wrap_seq(writer, seq, wrap)
+}
+
+/// Writes only the sequence header.
+#[inline]
+pub fn write_head<W>(writer: &mut W, head: &[u8])
+    -> io::Result<()>
+    where W: io::Write
+{
+    writer.write_all(b">")?;
+    writer.write_all(head)?;
+    writer.write_all(b"\n")
+}
+
+/// Writes only the sequence header given ID and description parts.
+#[inline]
+pub fn write_id_desc<W>(writer: &mut W, id: &[u8], desc: Option<&[u8]>)
+    -> io::Result<()>
+    where W: io::Write
+{
+    writer.write_all(b">")?;
+    writer.write_all(id)?;
     if let Some(d) = desc {
-        n += writer.write(b" ")?;
-        n += writer.write(d)?;
+    writer.write_all(b" ")?;
+    writer.write_all(d)?;
     }
-    n += writer.write(b"\n")?;
-    n += writer.write(seq)?;
-    n += writer.write(b"\n")?;
-    Ok(n)
+    writer.write_all(b"\n")
+}
+
+/// Writes only the sequence line.
+#[inline]
+pub fn write_seq<W>(writer: &mut W, seq: &[u8])
+    -> io::Result<()>
+    where W: io::Write
+{
+    writer.write_all(seq)?;
+    writer.write_all(b"\n")
+}
+
+/// Writes the sequence line, and wraps the output to a maximum width specified by `wrap`.
+#[inline]
+pub fn write_wrap_seq<W>(writer: &mut W, seq: &[u8], wrap: usize)
+    -> io::Result<()>
+    where W: io::Write
+{
+    for chunk in seq.chunks(wrap) {
+        writer.write_all(chunk)?;
+        writer.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
+/// Writes the sequence line from an iterator (such as `SeqLines`)
+#[inline]
+pub fn write_seq_iter<'a, W, S>(writer: &mut W, seq: S)
+    -> io::Result<()>
+    where W: io::Write, S: Iterator<Item=&'a [u8]>
+{
+    for subseq in seq {
+        writer.write_all(subseq)?;
+    }
+    writer.write_all(b"\n")
+}
+
+/// Writes the sequence line from an iterator (such as `SeqLines`) and wraps the output
+/// to a maximum width specified by `wrap`.
+#[inline]
+pub fn write_wrap_seq_iter<'a, W, S>(writer: &mut W, seq: S, wrap: usize)
+    -> io::Result<()>
+    where W: io::Write, S: IntoIterator<Item=&'a [u8]>
+{
+    let mut n_line = 0;
+    for subseq in seq {
+        let mut chunk = subseq;
+        loop {
+            let remaining = wrap - n_line;
+            if chunk.len() <= remaining {
+                writer.write_all(chunk)?;
+                n_line += chunk.len();
+                break;
+            }
+            // chunk longer than line -> break
+            writer.write_all(&chunk[..remaining])?;
+            writer.write_all(b"\n")?;
+            chunk = &chunk[remaining..];
+            n_line = 0;
+        }
+    }
+    writer.write_all(b"\n")?;
+    Ok(())
 }

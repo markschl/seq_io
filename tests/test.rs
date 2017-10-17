@@ -175,3 +175,46 @@ fn test_fastq_none_after_err() {
     assert!(reader.next().unwrap().is_err());
     assert!(reader.next().is_none());
 }
+
+// FASTA writing
+
+#[test]
+fn test_fasta_write_head() {
+    let mut out = vec![];
+    fasta::write_head(&mut out, b"id desc").unwrap();
+    assert_eq!(&out, b">id desc\n");
+}
+
+#[test]
+fn test_fasta_write_seq() {
+    let mut out = vec![];
+    fasta::write_seq(&mut out, b"ATGC").unwrap();
+    assert_eq!(&out, b"ATGC\n");
+}
+
+#[test]
+fn test_fasta_write_seq_wrap() {
+    let mut out = vec![];
+    fasta::write_wrap_seq(&mut out, b"ATGCA", 2).unwrap();
+    assert_eq!(&out, b"AT\nGC\nA\n");
+}
+
+#[test]
+fn test_fasta_write_seq_iter() {
+    let mut out = vec![];
+    fasta::write_seq_iter(&mut out, b"ATGCA".chunks(2)).unwrap();
+    assert_eq!(&out, b"ATGCA\n");
+}
+
+#[test]
+fn test_fasta_write_seq_iter_wrap() {
+    for size in 1..11 {
+        let mut out = vec![];
+        fasta::write_wrap_seq_iter(&mut out, b"AAAATTTTGGG".chunks(size), 3).unwrap();
+        assert_eq!(&out, b"AAA\nATT\nTTG\nGG\n");
+
+        let mut out = vec![];
+        fasta::write_wrap_seq_iter(&mut out, b"AAAATTTTGGG".chunks(size), 4).unwrap();
+        assert_eq!(&out, b"AAAA\nTTTT\nGGG\n");
+    }
+}
