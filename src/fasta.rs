@@ -4,11 +4,11 @@
 use std::io::{self,BufRead};
 use std::fs::File;
 use std::path::Path;
-use memchr::memchr;
 use std::slice;
 use std::iter;
 use std::str::{self,Utf8Error};
 
+use memchr::memchr;
 use buf_redux;
 
 use super::*;
@@ -83,7 +83,6 @@ impl<R, S> Reader<R, S>
         }
 
         Some(Ok(()))
-        // incomplete -> move data to start of buffer, grow buffer if necessary
     }
 
     /// Search the next FASTA record and return a `RefRecord` that
@@ -94,8 +93,8 @@ impl<R, S> Reader<R, S>
         ))
     }
 
-    /// Updates a `RecordSet` with a new buffer and new record positions. Old data will be erased,
-    /// but vectors are reused. Returns `None` if the input reached its end
+    /// Updates a `RecordSet` with a new buffer and searches for records. Old data will be erased.
+    /// Returns `None` if the input reached its end
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), ParseError>> {
 
         // note: remember to always check for 'self.finished', or subsequent calls to
@@ -111,11 +110,11 @@ impl<R, S> Reader<R, S>
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
 
-        // remaining records
+        // Update records that are already in the positions vector
         let mut n = 0;
         for pos in rset.positions.iter_mut() {
             n += 1;
-            pos.update(&self.position); // first record already read
+            pos.update(&self.position);
 
             if self.finished || ! try_opt!(self.read_next()) {
                 rset.npos = n;
@@ -123,7 +122,7 @@ impl<R, S> Reader<R, S>
             }
         }
 
-        // there may be more to add
+        // Add more positions if necessary
         loop {
             n += 1;
             rset.positions.push(self.position.clone());
@@ -186,7 +185,7 @@ impl<R, S> Reader<R, S>
     #[inline]
     fn check_end(&mut self) -> Result<bool, ParseError> {
         let bufsize = self.get_buf().len();
-        if bufsize < self.buffer.capacity() && bufsize > 0 { // bufsize == 0 means that init() has not yet been done
+        if bufsize < self.buffer.capacity() && bufsize > 0 { // bufsize == 0 means that init() has not yet been executed
             // EOF reached, there will be no next record
             self.finished = true;
             self.position.seq_starts.push(bufsize);
@@ -346,12 +345,14 @@ impl RecordPosition {
         Ok(data.len())
     }
 
+    #[inline]
     fn update(&mut self, other: &Self) {
         self.start = other.start;
         self.seq_starts.clear();
         self.seq_starts.extend(&other.seq_starts);
     }
 
+    #[inline]
     fn seq_lines<'a>(&'a self, buffer: &'a [u8]) -> SeqLines<'a> {
         SeqLines {
             data: buffer,
@@ -359,6 +360,7 @@ impl RecordPosition {
         }
     }
 
+    #[inline]
     fn owned_seq(&self, buffer: &[u8]) -> Vec<u8> {
         let mut seq = Vec::new();
         for segment in self.seq_lines(buffer) {
@@ -367,6 +369,7 @@ impl RecordPosition {
         return seq;
     }
 
+    #[inline]
     pub fn get_owned_record(&self, buffer: &[u8]) -> OwnedRecord {
         OwnedRecord {
             head: self.head(buffer).to_vec(),
@@ -471,13 +474,14 @@ impl<'a> RefRecord<'a> {
         self.position.seq_lines(self.buffer)
     }
 
-    /// Return the sequence as owned `Vec`. **Note**: This function
+    /// Returns the sequence as owned `Vec`. **Note**: This function
     /// must be called in order to obtain a sequence that does not contain
     /// line endings (as returned by `seq()`)
     pub fn owned_seq(&self) -> Vec<u8> {
         self.position.owned_seq(self.buffer)
     }
 
+    /// Creates an owned copy of the record.
     pub fn to_owned_record(&self) -> OwnedRecord {
         self.position.get_owned_record(self.buffer)
     }
@@ -515,10 +519,12 @@ pub struct OwnedRecord {
 
 
 impl Record for OwnedRecord {
+    #[inline]
     fn head(&self) -> &[u8] {
         &self.head
     }
 
+    #[inline]
     fn seq(&self) -> &[u8] {
         &self.seq
     }
