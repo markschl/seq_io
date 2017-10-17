@@ -323,7 +323,7 @@ impl error::Error for ParseError {
 
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct RecordPosition {
     start: usize,
     seq_starts: Vec<usize>,
@@ -513,7 +513,7 @@ impl<'a> Iterator for SeqLines<'a> {
 
 
 /// A FASTA record that ownes its data (requiring two allocations)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OwnedRecord {
     pub head: Vec<u8>,
     pub seq: Vec<u8>,
@@ -536,7 +536,7 @@ impl Record for OwnedRecord {
 
 /// Set of FASTA records that owns it's buffer
 /// and knows the positions of each record.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
     buffer: Vec<u8>,
     positions: Vec<RecordPosition>,

@@ -54,6 +54,11 @@
 extern crate buf_redux;
 extern crate memchr;
 
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+
+
 use std::error;
 use std::fmt;
 use std::io;

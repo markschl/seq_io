@@ -378,7 +378,7 @@ impl error::Error for ParseError {
 
 
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct RecordPosition {
     // (start, stop), but might include \r at the end
     pos: (usize, usize),
@@ -535,7 +535,7 @@ impl<'a> RefRecord<'a> {
 
 
 /// A FASTQ record that ownes its data (requires allocations)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OwnedRecord {
     pub head: Vec<u8>,
     pub seq: Vec<u8>,
@@ -555,7 +555,7 @@ impl Record for OwnedRecord {
 
 /// Set of FASTQ records that owns it's buffer
 /// and knows the positions of each record.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
     buffer: Vec<u8>,
     positions: Vec<RecordPosition>,
