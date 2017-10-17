@@ -80,22 +80,36 @@ use std::marker::PhantomData;
 
 
 pub trait Reader: Send {
-    type DataSet: Default + Send;
+    type DataSet: Send;
     type Err: Send;
     fn fill_data(&mut self, record: &mut Self::DataSet) -> Option<Result<(), Self::Err>>;
 }
 
-
-pub fn read_parallel<P, O, W, F, Out>(mut reader: P, n_threads: u32, queue_len: usize, work: W, func: F) -> Out
-    where P: Reader,
+pub fn read_parallel<R, O, W, F, Out>(reader: R, n_threads: u32, queue_len: usize, work: W, func: F) -> Out
+    where R: Reader,
+          R::DataSet: Default,
           O: Default + Send,
           W: Send + Sync,
-          W: Fn(&mut P::DataSet) -> O,
-          F: FnOnce(&mut ParallelRecordsets<P::DataSet, P::Err, O>) -> Out,
+          W: Fn(&mut R::DataSet) -> O,
+          F: FnMut(&mut ParallelRecordsets<R::DataSet, R::Err, O>) -> Out,
+{
+    read_parallel_with(reader, n_threads, queue_len, || R::DataSet::default(), work, func)
+}
+
+pub fn read_parallel_with<R, O, D, W, F, Out>(
+        mut reader: R, n_threads: u32, queue_len: usize,
+        mut dataset_init: D, work: W, func: F
+    ) -> Out
+    where R: Reader,
+          O: Send,
+          D: Send + Sync + FnMut() -> R::DataSet,
+          W: Send + Sync,
+          W: Fn(&mut R::DataSet) -> O,
+          F: FnOnce(&mut ParallelRecordsets<R::DataSet, R::Err, O>) -> Out,
 {
 
     let (done_send, done_recv) = mpsc::sync_channel(queue_len);
-    let (empty_send, empty_recv): (mpsc::SyncSender<Option<P::DataSet>>, _) = mpsc::sync_channel(queue_len);
+    let (empty_send, empty_recv): (mpsc::SyncSender<R::DataSet>, _) = mpsc::sync_channel(queue_len);
 
     crossbeam::scope(|scope| {
 
@@ -110,14 +124,13 @@ pub fn read_parallel<P, O, W, F, Out>(mut reader: P, n_threads: u32, queue_len: 
                 loop {
                     // recycle an old DataSet sent back after use by the streaming iterator
                     let mut data =
-                        if let Ok(Some(r)) = empty_recv.recv() {
+                        if let Ok(r) = empty_recv.recv() {
                             r
                         } else {
-                            // 'ParallelRecordsets::stop()' called
+                            // ParallelRecordsets dropped -> stop
                             return;
                         };
 
-                    // each time, we need a new reference
                     let done_send = done_send.clone();
 
                     if let Some(res) = reader.fill_data(&mut data) {
@@ -149,19 +162,17 @@ pub fn read_parallel<P, O, W, F, Out>(mut reader: P, n_threads: u32, queue_len: 
         });
 
         for _ in 0..queue_len  {
-            empty_send.send(Some(P::DataSet::default())).unwrap();
+            empty_send.send(dataset_init()).unwrap();
         }
 
-        let mut records = ParallelRecordsets {
+        let mut rsets = ParallelRecordsets {
             empty_send: empty_send,
             done_recv: done_recv,
-            current_recordset: P::DataSet::default(),
+            current_recordset: dataset_init(),
         };
 
-        let out = func(&mut records);
-
-        records.stop();
-
+        let out = func(&mut rsets);
+        ::std::mem::drop(rsets);
         out
     })
 }
@@ -169,43 +180,31 @@ pub fn read_parallel<P, O, W, F, Out>(mut reader: P, n_threads: u32, queue_len: 
 
 
 pub struct ParallelRecordsets<R, E, O>
-    where R: Default + Send,
+    where R: Send,
           E: Send,
           O: Send,
 {
-    empty_send: mpsc::SyncSender<Option<R>>,
+    empty_send: mpsc::SyncSender<R>,
     done_recv: mpsc::Receiver<Option<Result<(R, O), E>>>,
     current_recordset: R,
 }
 
 impl<R, E, O> ParallelRecordsets<R, E, O>
-    where R: Default + Send,
+    where R: Send,
           E: Send,
           O: Send,
  {
-
-    pub fn next<'b>(&'b mut self) -> Option<Result<(&'b R, O), E>> {
-        if let Some(result) = self.done_recv.recv().unwrap() {
+    pub fn next<'b>(&'b mut self) -> Option<Result<(&'b mut R, O), E>> {
+        self.done_recv.recv().unwrap().map(move |result| {
             match result {
                 Ok((r, o)) => {
                      let prev_rset = ::std::mem::replace(&mut self.current_recordset, r);
-                     self.empty_send.send(Some(prev_rset)).ok(); // error: channel closed is not a problem, happens after calling stop()
-                    return Some(Ok((&self.current_recordset, o)));
+                     self.empty_send.send(prev_rset).ok(); // error: channel closed is not a problem, happens after calling stop()
+                     Ok((&mut self.current_recordset, o))
                 }
-                Err(e) => return Some(Err(e))
+                Err(e) => Err(e)
             }
-        } else {
-            // 'done' signal received
-            return None;
-        }
-    }
-
-    // has to be called before object goes out of scope
-    // currently, the signal is delayed (has to wait until it is popped from the
-    // 'empty' queue)
-    // TODO: should an AtomicBool be used?
-    fn stop(self) {
-        self.empty_send.send(None).ok();
+        })
     }
 }
 
@@ -219,7 +218,7 @@ macro_rules! parallel_record_impl {
                   O: Default + Send,
                   W: Send + Sync,
                   W: Fn($record, &mut O),
-                  F: FnMut($record, &O) -> Option<Out>,
+                  F: FnMut($record, &mut O) -> Option<Out>,
         {
             let reader = $crate::parallel::ReusableReader::new(parser);
 
@@ -237,7 +236,7 @@ macro_rules! parallel_record_impl {
             }, |records| {
                 while let Some(result) = records.next() {
                     let (r, _) = result?;
-                    for x in r.0.into_iter().zip(&r.1) {
+                    for x in r.0.into_iter().zip(&mut r.1) {
                         if let Some(out) = func(x.0, x.1) {
                             return Ok(Some(out));
                         }
@@ -273,7 +272,7 @@ parallel_record_impl!(parallel_fastq, R, fastq::Reader<R>, fastq::RefRecord, fas
 ///     }
 /// }, |record_sets| {
 ///     while let Some(result) = record_sets.next() {
-///         let &(ref record_set, ref out) = result.unwrap().0;
+///         let &(ref record_set, ref out) = &*result.unwrap().0;
 ///         for (record, found) in record_set.into_iter().zip(out) {
 ///             // ...
 ///         }
@@ -291,7 +290,7 @@ impl<P, O> ReusableReader<P, O> {
 
 impl<P, O> Reader for ReusableReader<P, O>
     where P: Reader,
-          O: Default + Send {
+          O: Send {
 
     type DataSet = (P::DataSet, O);
     type Err = P::Err;
@@ -305,13 +304,14 @@ impl<P, O> Reader for ReusableReader<P, O>
 ///
 /// `parallel_fasta`/`parallel_fastq` provide the same functionality for now
 /// (implemented using `parallel_record_impl` macro)
-pub fn parallel_records<P, O, W, F, Out>(parser: P, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<Option<Out>, P::Err>
-    where P: Reader,
-          for<'a> &'a P::DataSet: IntoIterator,
+pub fn parallel_records<R, O, W, F, Out>(parser: R, n_threads: u32, queue_len: usize, work: W, mut func: F) -> Result<Option<Out>, R::Err>
+    where R: Reader,
+          for<'a> &'a R::DataSet: IntoIterator,
+          R::DataSet: Default,
           O: Default + Send,
           W: Send + Sync,
-          W: Fn(<&P::DataSet as IntoIterator>::Item, &mut O),
-          F: FnMut(<&P::DataSet as IntoIterator>::Item, &O) -> Option<Out>,
+          W: Fn(<&R::DataSet as IntoIterator>::Item, &mut O),
+          F: FnMut(<&R::DataSet as IntoIterator>::Item, &O) -> Option<Out>,
 {
     let reader = ReusableReader(parser, PhantomData);
 
