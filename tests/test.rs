@@ -218,3 +218,26 @@ fn test_fasta_write_seq_iter_wrap() {
         assert_eq!(&out, b"AAAA\nTTTT\nGGG\n");
     }
 }
+
+
+// FASTQ writing
+
+#[test]
+fn test_fastq_write_record() {
+    let mut out = vec![];
+    let mut rdr = fastq::Reader::new(FASTQ);
+    while let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+    assert_eq!(&out, &FASTQ);
+}
+
+#[test]
+fn test_fastq_write_record_unchanged() {
+    let mut out = vec![];
+    let mut rdr = fastq::Reader::new(FASTQ);
+    while let Some(Ok(r)) = rdr.next() {
+        r.write_unchanged(&mut out).unwrap();
+    }
+    assert_eq!(&out, &FASTQ);
+}
