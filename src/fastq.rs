@@ -486,7 +486,7 @@ impl<R, S> Record for Reader<R, S>
 
     #[inline]
     fn qual(&self) -> &[u8] {
-        self.position.seq(self.get_buf())
+        self.position.qual(self.get_buf())
     }
 }
 
