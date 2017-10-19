@@ -282,7 +282,7 @@ impl<R, S> Reader<R, S>
         self.position.get_owned_record(self.get_buf())
     }
 
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
+    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.position.write(writer, self.get_buf())
     }
 }
@@ -341,10 +341,10 @@ impl RecordPosition {
     }
 
     #[inline]
-    fn write<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<usize> {
+    fn write<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
         let data = &buffer[self.start .. *self.seq_starts.last().unwrap()];
         writer.write_all(data)?;
-        Ok(data.len())
+        Ok(())
     }
 
     #[inline]
@@ -514,7 +514,7 @@ impl<'a> RefRecord<'a> {
 
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
+    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.position.write(writer, self.buffer)
     }
 }

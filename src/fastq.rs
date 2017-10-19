@@ -337,7 +337,7 @@ impl<R, S> Reader<R, S>
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
+    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.position.write_unchanged(writer, self.get_buf())
     }
 }
@@ -405,10 +405,10 @@ impl RecordPosition {
     }
 
     #[inline]
-    fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<usize> {
+    fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
         let data = &buffer[self.pos.0 .. self.pos.1];
         writer.write_all(data)?;
-        Ok(data.len())
+        Ok(())
     }
 
     #[inline]
@@ -464,7 +464,7 @@ pub trait Record {
 
     /// Writes a record to the given `io::Write` instance
     #[inline]
-    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
+    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         write_to(writer, self.head(), self.seq(), self.qual())
     }
 }
@@ -528,7 +528,7 @@ impl<'a> RefRecord<'a> {
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<usize> {
+    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.position.write_unchanged(writer, self.buffer)
     }
 }
@@ -605,17 +605,16 @@ impl<'a> Iterator for RecordSetIter<'a> {
 /// to the FASTQ format
 pub fn write_to<W: io::Write>(
     writer: &mut W,
-    head: &[u8], seq: &[u8], qual: &[u8]) -> io::Result<usize>
+    head: &[u8], seq: &[u8], qual: &[u8]) -> io::Result<()>
 {
-    let mut n = 0;
-    n += writer.write(b"@")?;
-    n += writer.write(head)?;
-    n += writer.write(b"\n")?;
-    n += writer.write(seq)?;
-    n += writer.write(b"\n+")?;
-    n += writer.write(qual)?;
-    n += writer.write(b"\n")?;
-    Ok(n)
+    writer.write_all(b"@")?;
+    writer.write_all(head)?;
+    writer.write_all(b"\n")?;
+    writer.write_all(seq)?;
+    writer.write_all(b"\n+\n")?;
+    writer.write_all(qual)?;
+    writer.write_all(b"\n")?;
+    Ok(())
 }
 
 
@@ -625,19 +624,18 @@ pub fn write_to<W: io::Write>(
 pub fn write_parts<W: io::Write>(
     writer: &mut W,
     id: &[u8], desc: Option<&[u8]>,
-    seq: &[u8], qual: &[u8]) -> io::Result<usize>
+    seq: &[u8], qual: &[u8]) -> io::Result<()>
 {
-    let mut n = 0;
-    n += writer.write(b"@")?;
-    n += writer.write(id)?;
+    writer.write_all(b"@")?;
+    writer.write_all(id)?;
     if let Some(d) = desc {
-        n += writer.write(b" ")?;
-        n += writer.write(d)?;
+        writer.write_all(b" ")?;
+        writer.write_all(d)?;
     }
-    n += writer.write(b"\n")?;
-    n += writer.write(seq)?;
-    n += writer.write(b"\n+")?;
-    n += writer.write(qual)?;
-    n += writer.write(b"\n")?;
-    Ok(n)
+    writer.write_all(b"\n")?;
+    writer.write_all(seq)?;
+    writer.write_all(b"\n+\n")?;
+    writer.write_all(qual)?;
+    writer.write_all(b"\n")?;
+    Ok(())
 }
