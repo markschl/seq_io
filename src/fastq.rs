@@ -361,8 +361,10 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ParseError::Io(ref e) => write!(f, "{}", e),
-            ParseError::UnequalLengths(seq, qual) => write!(f, "Unequal lengths: sequence length is {}, but quality length is {}", seq, qual),
-            ParseError::Unexpected(exp, found) => write!(f, "Expected '{}' but found '{}'", exp as char, found as char),
+            ParseError::UnequalLengths(seq, qual) =>
+                write!(f, "Unequal lengths: sequence length is {}, but quality length is {}", seq, qual),
+            ParseError::Unexpected(exp, found) =>
+                write!(f, "Expected '{}' but found '{}'", exp as char, (found as char).escape_default()),
             ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
             ParseError::BufferOverflow => write!(f, "Buffer overflow"),
         }
