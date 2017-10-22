@@ -83,7 +83,7 @@ impl<R, S> Reader<R, S>
     #[inline]
     pub fn proceed(&mut self) -> Option<Result<(), ParseError>> {
         if ! try_opt!(self.find_next()) {
-            if try_opt!(self.next_complete()).is_none() {
+            if ! try_opt!(self.next_complete()) {
                 return None;
             }
         }
@@ -100,21 +100,20 @@ impl<R, S> Reader<R, S>
     }
 
     #[inline]
-    fn init(&mut self) -> Result<(), ParseError> {
+    fn init(&mut self) -> Result<bool, ParseError> {
         let n = fill_buf(&mut self.buffer)?;
         if n == 0 {
-            // TODO: should this really be an ParseError?
             self.finished = true;
-            return Err(ParseError::EmptyInput);
+            return Ok(false);
         }
-        self.require_byte(0, b'@')
+        Ok(true)
     }
 
-    /// Updates a `RecordSet` with a new buffer and new positions.
-    /// Present data will be erased. Returns `None` if the input reached its end
+    /// Updates a `RecordSet` with a new buffer and searches for records. Old data will be erased.
+    /// Returns `None` if the input reached its end
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), ParseError>> {
 
-        if try_opt!(self.next_complete()).is_none() {
+        if ! try_opt!(self.next_complete()) {
             return None;
         }
 
@@ -131,7 +130,6 @@ impl<R, S> Reader<R, S>
 
         Some(Ok(()))
     }
-
 
     #[inline(always)]
     fn get_buf(&self) -> &[u8] {
@@ -255,7 +253,7 @@ impl<R, S> Reader<R, S>
     // If the record still doesn't fit in, the buffer will be enlarged.
     // After calling this function, the position will therefore always be 'complete'.
     #[inline]
-    fn next_complete(&mut self) -> Result<Option<()>, ParseError> {
+    fn next_complete(&mut self) -> Result<Option<bool>, ParseError> {
 
         if self.get_buf().len() == 0 {
             // not yet initialized
@@ -279,13 +277,13 @@ impl<R, S> Reader<R, S>
                     // no line ending at end of last record
                     self.position.pos.1 = bufsize + 1;
                     self.validate()?;
-                    return Ok(Some(()));
+                    return Ok(true);
                 }
 
                 let rest = &self.get_buf()[self.position.pos.0..];
                 if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).len() == 0)  {
-                    // allow up to 4 newlines after last record (more will cause an Unexpected error)
-                    return Ok(None);
+                    // allow up to 3 newlines after last record (more will cause an Unexpected error)
+                    return Ok(false);
                 }
 
                 return Err(ParseError::UnexpectedEnd);
@@ -323,7 +321,7 @@ impl<R, S> Reader<R, S>
             // self.position.pos.1 = 0;
             // self.cursor_pos = CursorPos::HEAD;
             if self.find_incomplete()? {
-                return Ok(Some(()));
+                return Ok(true);
             }
         }
     }
@@ -346,7 +344,6 @@ impl<R, S> Reader<R, S>
 #[derive(Debug)]
 pub enum ParseError {
     Io(io::Error),
-    EmptyInput,
     UnequalLengths(usize, usize),
     Unexpected(u8, u8),
     UnexpectedEnd,
@@ -357,7 +354,6 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ParseError::Io(ref e) => write!(f, "{}", e),
-            ParseError::EmptyInput => write!(f, "Input empty"),
             ParseError::UnequalLengths(seq, qual) => write!(f, "Unequal lengths: sequence length is {}, but quality length is {}", seq, qual),
             ParseError::Unexpected(exp, found) => write!(f, "Expected '{}' but found '{}'", exp as char, found as char),
             ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),

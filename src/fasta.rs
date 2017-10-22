@@ -79,7 +79,9 @@ impl<R, S> Reader<R, S>
         }
 
         if ! try_opt!(self.read_next()) {
-            try_opt!(self.next_complete());
+            if ! try_opt!(self.next_complete()) {
+                return None;
+            }
         }
 
         Some(Ok(()))
@@ -97,14 +99,9 @@ impl<R, S> Reader<R, S>
     /// Returns `None` if the input reached its end
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), ParseError>> {
 
-        // note: remember to always check for 'self.finished', or subsequent calls to
-        // next_complete will have an incorrect 'next_start' prop
-
-        if self.finished {
+        if self.finished || ! try_opt!(self.next_complete()) {
             return None;
         }
-
-        try_opt!(self.next_complete());
 
         // copy buffer AFTER call to next_complete (initialization of buffer is done there)
         rset.buffer.clear();
@@ -199,13 +196,12 @@ impl<R, S> Reader<R, S>
 
     // moves to the first record posiion, ignoring newline / carriage return characters
     #[inline]
-    fn init(&mut self) -> Result<(), ParseError> {
+    fn init(&mut self) -> Result<bool, ParseError> {
         loop {
             let n = fill_buf(&mut self.buffer)?;
             if n == 0 {
-                // TODO: should this really be an ParseError?
                 self.finished = true;
-                return Err(ParseError::EmptyInput);
+                return Ok(false);
             }
             if let Some((i, c)) = self.buffer.get_buf()
                                       .iter()
@@ -217,7 +213,7 @@ impl<R, S> Reader<R, S>
                     return Err(ParseError::InvalidStart(i));
                 }
                 self.position.start = i;
-                return Ok(());
+                return Ok(true);
             }
             // whole buffer consists of newlines (unlikely)
             let cap = self.buffer.capacity();
@@ -231,13 +227,15 @@ impl<R, S> Reader<R, S>
     /// After calling this function, the position will therefore always be 'complete'.
     /// this function assumes that the buffer was fully searched
     #[inline]
-    fn next_complete(&mut self) -> Result<(), ParseError> {
+    fn next_complete(&mut self) -> Result<bool, ParseError> {
 
         loop {
 
             if self.get_buf().len() == 0 {
                 // not yet initialized
-                self.init()?;
+                if ! self.init()? {
+                    return Ok(false);
+                }
 
             } else if self.position.start == 0 {
                 // first record -> buffer too small, grow until big enough
@@ -263,7 +261,7 @@ impl<R, S> Reader<R, S>
             fill_buf(&mut self.buffer)?;
 
             if self.search()? {
-                return Ok(());
+                return Ok(true);
             }
         }
     }
@@ -291,7 +289,6 @@ impl<R, S> Reader<R, S>
 #[derive(Debug)]
 pub enum ParseError {
     Io(io::Error),
-    EmptyInput,
     InvalidStart(usize),
     UnexpectedEnd,
     BufferOverflow,
@@ -302,7 +299,6 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ParseError::Io(ref e) => write!(f, "{}", e),
-            ParseError::EmptyInput => write!(f, "Input empty"),
             ParseError::InvalidStart(pos) => write!(f, "Expected > at file start (position: {})", pos),
             ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
             ParseError::BufferOverflow => write!(f, "Buffer overflow"),
@@ -317,7 +313,7 @@ impl From<io::Error> for ParseError {
 }
 
 impl error::Error for ParseError {
-    fn description(&self) -> &str { "FASTA parsing ParseError" }
+    fn description(&self) -> &str { "FASTA parsing error" }
 }
 
 
