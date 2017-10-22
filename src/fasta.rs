@@ -213,6 +213,7 @@ impl<R, S> Reader<R, S>
                     return Err(ParseError::InvalidStart(i));
                 }
                 self.position.start = i;
+                self.n_searched = i + 1;
                 return Ok(true);
             }
             // whole buffer consists of newlines (unlikely)
