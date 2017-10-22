@@ -82,6 +82,11 @@ impl<R, S> Reader<R, S>
 
     #[inline]
     pub fn proceed(&mut self) -> Option<Result<(), ParseError>> {
+
+        if self.finished ||  ! try_opt!(self.check_init()) {
+            return None;
+        }
+
         if ! try_opt!(self.find_next()) {
             if ! try_opt!(self.next_complete()) {
                 return None;
@@ -92,19 +97,24 @@ impl<R, S> Reader<R, S>
 
     /// Search the next FASTQ record and return a `RefRecord` that
     /// borrows it's data from the underlying buffer of this reader
-    #[inline]
     pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, ParseError>> {
         self.proceed().map(|r| r.map(
             move |_| RefRecord { buffer: self.get_buf(), position: &self.position }
         ))
     }
 
-    #[inline]
-    fn init(&mut self) -> Result<bool, ParseError> {
-        let n = fill_buf(&mut self.buffer)?;
-        if n == 0 {
-            self.finished = true;
-            return Ok(false);
+    fn is_new(&self) -> bool {
+        self.position.pos.1 == 0
+    }
+
+    #[inline(always)]
+    fn check_init(&mut self) -> Result<bool, ParseError> {
+        if self.get_buf().len() == 0 {
+            let n = fill_buf(&mut self.buffer)?;
+            if n == 0 {
+                self.finished = true;
+                return Ok(false);
+            }
         }
         Ok(true)
     }
@@ -113,11 +123,20 @@ impl<R, S> Reader<R, S>
     /// Returns `None` if the input reached its end
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), ParseError>> {
 
-        if ! try_opt!(self.next_complete()) {
+        if self.finished ||  ! try_opt!(self.check_init()) {
             return None;
         }
 
-        // fill buffer AFTER call to next_complete(); initialization of buffer is done there
+        let res = if self.is_new() {
+            try_opt!(self.find_next())
+        } else {
+            try_opt!(self.next_complete())
+        };
+
+        if ! res {
+            return None;
+        }
+
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
 
@@ -144,7 +163,9 @@ impl<R, S> Reader<R, S>
     #[inline(always)]
     fn find_next(&mut self) -> Result<bool, ParseError> {
 
-        self.position.pos.0 = self.position.pos.1;
+        if ! self.is_new() {
+            self.position.pos.0 = self.position.pos.1 + 1;
+        }
 
         self.position.seq = unwrap_or!(self.find_line(self.position.pos.0), {
             self.cursor_pos = CursorPos::HEAD;
@@ -164,7 +185,7 @@ impl<R, S> Reader<R, S>
         self.position.pos.1 = unwrap_or!(self.find_line(self.position.qual), {
             self.cursor_pos = CursorPos::QUAL;
             return Ok(false);
-        });
+        }) - 1;
 
         self.validate()?;
 
@@ -174,9 +195,9 @@ impl<R, S> Reader<R, S>
         Ok(true)
     }
 
-    // Continues reading an incomplete record without
+    // Resumes reading an incomplete record without
     // re-searching positions that were already found.
-    // The resulting position may still be incomplete.
+    // The resulting position may still be incomplete (-> false).
     #[inline]
     fn find_incomplete(&mut self) -> Result<bool, ParseError> {
 
@@ -205,7 +226,7 @@ impl<R, S> Reader<R, S>
             self.position.pos.1 = unwrap_or!(self.find_line(self.position.qual), {
                 self.cursor_pos = CursorPos::QUAL;
                 return Ok(false);
-            });
+            }) - 1;
         }
 
         self.cursor_pos = CursorPos::HEAD;
@@ -221,10 +242,10 @@ impl<R, S> Reader<R, S>
 
         let p0 = self.position.pos.0;
         self.require_byte(p0, b'@')?;
-        let ps = self.position.sep;
-        self.require_byte(ps, b'+')?;
+        let sep = self.position.sep;
+        self.require_byte(sep, b'+')?;
 
-        let qual_len = self.position.pos.1 - self.position.qual;
+        let qual_len = self.position.pos.1 - self.position.qual + 1;
         let seq_len = self.position.sep - self.position.seq;
         if seq_len != qual_len {
             self.finished = true;
@@ -253,29 +274,16 @@ impl<R, S> Reader<R, S>
     // If the record still doesn't fit in, the buffer will be enlarged.
     // After calling this function, the position will therefore always be 'complete'.
     #[inline]
-    fn next_complete(&mut self) -> Result<Option<bool>, ParseError> {
-
-        if self.get_buf().len() == 0 {
-            // not yet initialized
-            self.init()?;
-            if self.find_next()? {
-                return Ok(Some(()));
-            }
-        }
+    fn next_complete(&mut self) -> Result<bool, ParseError> {
 
         loop {
-
-            // this function assumes that the buffer was fully searched
             let bufsize = self.get_buf().len();
             if bufsize < self.buffer.capacity() {
-                if self.finished {
-                    return Ok(None);
-                }
                 // EOF reached, there will be no next record
                 self.finished = true;
                 if self.cursor_pos == CursorPos::QUAL {
                     // no line ending at end of last record
-                    self.position.pos.1 = bufsize + 1;
+                    self.position.pos.1 = bufsize;
                     self.validate()?;
                     return Ok(true);
                 }
@@ -294,7 +302,6 @@ impl<R, S> Reader<R, S>
                 let new_size = self.grow_strategy.new_size(cap).ok_or(ParseError::BufferOverflow)?;
                 let additional = new_size - cap;
                 self.buffer.grow(additional);
-                fill_buf(&mut self.buffer)?;
 
             } else {
                 // not the first record -> buffer may be big enough
@@ -314,9 +321,9 @@ impl<R, S> Reader<R, S>
                 if self.cursor_pos >= CursorPos::QUAL {
                     self.position.qual -= consumed;
                 }
-
-                fill_buf(&mut self.buffer)?;
             }
+
+            fill_buf(&mut self.buffer)?;
 
             // self.position.pos.1 = 0;
             // self.cursor_pos = CursorPos::HEAD;
@@ -397,14 +404,14 @@ impl RecordPosition {
 
     #[inline]
     fn qual<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.qual .. self.pos.1 - 1])
+        trim_cr(&buffer[self.qual .. self.pos.1])
     }
 
     #[inline]
     fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
         let data = &buffer[self.pos.0 .. self.pos.1];
         writer.write_all(data)?;
-        Ok(())
+        writer.write_all(b"\n")
     }
 
     #[inline]

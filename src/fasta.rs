@@ -63,7 +63,7 @@ impl<R, S> Reader<R, S>
             ),
             position: RecordPosition {
                 start: 0,
-                seq_starts: Vec::with_capacity(2),
+                seq_pos: Vec::with_capacity(2),
             },
             n_searched: 0,
             finished: false,
@@ -135,7 +135,7 @@ impl<R, S> Reader<R, S>
     fn read_next(&mut self) -> Result<bool, ParseError> {
         // initialize (clear)
         self.position.start = self.n_searched;
-        self.position.seq_starts.clear();
+        self.position.seq_pos.clear();
         self.search()
     }
 
@@ -154,19 +154,19 @@ impl<R, S> Reader<R, S>
         while let Some(pos) = memchr(b'\n', &self.get_buf()[self.n_searched .. ]) {
             // don't search the last byte, since we need to look forward one byte, looking for the next record
             let pos = self.n_searched + pos;
-            let line_start = pos + 1;
+            let next_line_start = pos + 1;
 
             // start of next record is not actually a sequence start, but indicates end of Record
-            self.n_searched = line_start;
+            self.n_searched = next_line_start;
 
-            if line_start == bufsize {
+            if next_line_start == bufsize {
                 // cannot check next byte -> treat as incomplete
                 self.n_searched -= 1;  // make sure last byte is re-searched next time
                 return self.check_end();
             }
 
-            self.position.seq_starts.push(line_start);
-            if self.position.seq_starts.len() > 1 && self.get_buf()[line_start] == b'>' {
+            self.position.seq_pos.push(pos);
+            if self.position.seq_pos.len() > 1 && self.get_buf()[next_line_start] == b'>' {
                 // next found
                 return Ok(true);
             }
@@ -185,8 +185,8 @@ impl<R, S> Reader<R, S>
         if bufsize < self.buffer.capacity() && bufsize > 0 { // bufsize == 0 means that init() has not yet been executed
             // EOF reached, there will be no next record
             self.finished = true;
-            self.position.seq_starts.push(bufsize);
-            if self.position.seq_starts.len() == 1 {
+            self.position.seq_pos.push(self.n_searched);
+            if self.position.seq_pos.len() == 1 {
                 return Err(ParseError::UnexpectedEnd);
             }
             return Ok(true);
@@ -253,7 +253,7 @@ impl<R, S> Reader<R, S>
                 self.buffer.make_room();
                 self.position.start = 0;
                 self.n_searched -= consumed;
-                for s in &mut self.position.seq_starts {
+                for s in &mut self.position.seq_pos {
                     *s -= consumed;
                 }
             }
@@ -282,7 +282,7 @@ impl<R, S> Reader<R, S>
     }
 
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.position.write(writer, self.get_buf())
+        self.position.write_unchanged(writer, self.get_buf())
     }
 }
 
@@ -322,40 +322,45 @@ impl error::Error for ParseError {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct RecordPosition {
+    /// index of '>'
     start: usize,
-    seq_starts: Vec<usize>,
+    /// Vec with indices of line endings just *before* line start (pos - 1) referred to
+    seq_pos: Vec<usize>,
 }
 
 impl RecordPosition {
     #[inline]
     fn head<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.start + 1 .. *self.seq_starts.first().unwrap() - 1])
+        trim_cr(&buffer[self.start + 1 .. *self.seq_pos.first().unwrap()])
     }
 
     #[inline]
     fn seq<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[*self.seq_starts.first().unwrap() .. *self.seq_starts.last().unwrap() - 1])
+        trim_cr(&buffer[*self.seq_pos.first().unwrap() + 1 .. *self.seq_pos.last().unwrap()])
     }
 
     #[inline]
-    fn write<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
-        let data = &buffer[self.start .. *self.seq_starts.last().unwrap()];
+    fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
+        let data = &buffer[self.start .. *self.seq_pos.last().unwrap()];
         writer.write_all(data)?;
+        if *data.last().unwrap() != b'\n' {
+            writer.write_all(&[b'\n'])?;
+        }
         Ok(())
     }
 
     #[inline]
     fn update(&mut self, other: &Self) {
         self.start = other.start;
-        self.seq_starts.clear();
-        self.seq_starts.extend(&other.seq_starts);
+        self.seq_pos.clear();
+        self.seq_pos.extend(&other.seq_pos);
     }
 
     #[inline]
     fn seq_lines<'a>(&'a self, buffer: &'a [u8]) -> SeqLines<'a> {
         SeqLines {
             data: buffer,
-            pos_iter: self.seq_starts.iter().zip(self.seq_starts.iter().skip(1))
+            pos_iter: self.seq_pos.iter().zip(self.seq_pos.iter().skip(1))
         }
     }
 
@@ -512,7 +517,7 @@ impl<'a> RefRecord<'a> {
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.position.write(writer, self.buffer)
+        self.position.write_unchanged(writer, self.buffer)
     }
 }
 
@@ -527,7 +532,7 @@ impl<'a> Iterator for SeqLines<'a> {
 
     fn next(&mut self) -> Option<&'a [u8]> {
         self.pos_iter.next().map(
-            |(start, next_start)| trim_cr(&self.data[*start .. *next_start - 1])
+            |(start, next_start)| trim_cr(&self.data[*start + 1 .. *next_start])
         )
     }
 }
