@@ -4,7 +4,7 @@
 //! Additionally, the sequence length of records in the FASTA/FASTQ files
 //! is not limited by the size of the buffer. Instead, the buffer will grow until
 //! the record fits, allowing parsers with a minimum amount of copying required.
-//! How it grows can be configured (see [`BufGrowStrategy`](trait.BufGrowStrategy.html)).
+//! How it grows can be configured (see [`BufStrategy`](trait.BufStrategy.html)).
 //!
 //! # Example FASTQ parser:
 //! This code prints the ID string from each FASTQ record.
@@ -47,10 +47,6 @@
 //! # Parallel processing
 //! Functions for parallel processing can be found in the [`parallel`](parallel/index.html) module
 
-
-
-//use std::io;
-//use std::str::{self,Utf8Error};
 extern crate buf_redux;
 extern crate memchr;
 

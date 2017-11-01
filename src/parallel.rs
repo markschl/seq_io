@@ -248,9 +248,9 @@ macro_rules! parallel_record_impl {
      };
 }
 
-parallel_record_impl!(parallel_fasta, R, fasta::Reader<R>, fasta::RefRecord, fasta::ParseError);
+parallel_record_impl!(parallel_fasta, R, fasta::Reader<R>, fasta::RefRecord, fasta::Error);
 
-parallel_record_impl!(parallel_fastq, R, fastq::Reader<R>, fastq::RefRecord, fastq::ParseError);
+parallel_record_impl!(parallel_fastq, R, fastq::Reader<R>, fastq::RefRecord, fastq::Error);
 
 
 /// Wrapper for `parallel::Reader` instances allowing
@@ -346,11 +346,11 @@ use super::fasta;
 
 impl<R, S> Reader for fasta::Reader<R, S>
     where R: io::Read + Send,
-          S: super::strategy::BufGrowStrategy + Send
+          S: super::strategy::BufStrategy + Send
 {
     type DataSet = fasta::RecordSet;
-    type Err = fasta::ParseError;
-    fn fill_data(&mut self, rset: &mut fasta::RecordSet) -> Option<Result<(), fasta::ParseError>> {
+    type Err = fasta::Error;
+    fn fill_data(&mut self, rset: &mut fasta::RecordSet) -> Option<Result<(), fasta::Error>> {
         self.read_record_set(rset)
     }
 }
@@ -360,11 +360,11 @@ use super::fastq;
 
 impl<R, S> Reader for fastq::Reader<R, S>
     where R: io::Read + Send,
-          S: super::strategy::BufGrowStrategy + Send
+          S: super::strategy::BufStrategy + Send
 {
     type DataSet = fastq::RecordSet;
-    type Err = fastq::ParseError;
-    fn fill_data(&mut self, rset: &mut fastq::RecordSet) -> Option<Result<(), fastq::ParseError>> {
+    type Err = fastq::Error;
+    fn fill_data(&mut self, rset: &mut fastq::RecordSet) -> Option<Result<(), fastq::Error>> {
         self.read_record_set(rset)
     }
 }

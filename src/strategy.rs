@@ -3,8 +3,8 @@
 /// Returns the number of additional bytes given the
 /// current size. Returning None instead will indicate
 /// that the buffer has grown too big.
-pub trait BufGrowStrategy {
-    fn new_size(&self, current_size: usize) -> Option<usize>;
+pub trait BufStrategy {
+    fn grow_to(&mut self, current_size: usize) -> Option<usize>;
 }
 
 /// Buffer size doubles until it
@@ -12,8 +12,8 @@ pub trait BufGrowStrategy {
 /// increase in steps of 8 MB
 pub struct DoubleUntil8M;
 
-impl BufGrowStrategy for DoubleUntil8M {
-    fn new_size(&self, current_size: usize) -> Option<usize> {
+impl BufStrategy for DoubleUntil8M {
+    fn grow_to(&mut self, current_size: usize) -> Option<usize> {
         Some(if current_size < 1 << 23 {
             current_size * 2
         } else {
@@ -28,8 +28,8 @@ impl BufGrowStrategy for DoubleUntil8M {
 /// it increases in steps of `double_size_limit`
 pub struct DoubleUntil(pub usize);
 
-impl BufGrowStrategy for DoubleUntil {
-    fn new_size(&self, current_size: usize) -> Option<usize> {
+impl BufStrategy for DoubleUntil {
+    fn grow_to(&mut self, current_size: usize) -> Option<usize> {
         Some(if current_size < self.0 {
             current_size * 2
         } else {

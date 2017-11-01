@@ -1,7 +1,7 @@
 //! Efficient FASTA reading and writing
 //!
 
-use std::io::{self,BufRead};
+use std::io::{self,BufRead,Seek};
 use std::fs::File;
 use std::path::Path;
 use std::slice;
@@ -14,23 +14,25 @@ use buf_redux;
 use super::*;
 
 
-type DefaultBufGrowStrategy = DoubleUntil8M;
+type DefaultBufStrategy = DoubleUntil8M;
 
 
 const BUFSIZE: usize = 68 * 1024;
 
 
 /// Parser for FASTA files.
-pub struct Reader<R: io::Read, S = DefaultBufGrowStrategy> {
+pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
     buffer: buf_redux::BufReader<R, ReadAlways, buf_redux::strategy::NeverMove>,
-    position: RecordPosition,
+    buf_pos: BufferPosition,
+    position: Position,
     n_searched: usize,
     finished: bool,
-    grow_strategy: S,
+    //prev_records: u64,
+    buf_strategy: S,
 }
 
 
-impl<R> Reader<R, DefaultBufGrowStrategy>
+impl<R> Reader<R, DefaultBufStrategy>
     where R: io::Read
 {
     pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
@@ -42,7 +44,7 @@ impl<R> Reader<R, DefaultBufGrowStrategy>
     }
 }
 
-impl Reader<File, DefaultBufGrowStrategy> {
+impl Reader<File, DefaultBufStrategy> {
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
     }
@@ -50,38 +52,42 @@ impl Reader<File, DefaultBufGrowStrategy> {
 
 impl<R, S> Reader<R, S>
     where R: io::Read,
-          S: BufGrowStrategy
+          S: BufStrategy
 {
 
     #[inline]
-    pub fn with_cap_and_strategy(reader: R, cap: usize, grow_strategy: S) -> Reader<R, S> {
+    pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
         Reader {
             buffer: buf_redux::BufReader::with_cap_and_strategies(
                 reader, cap,
                 ReadAlways, buf_redux::strategy::NeverMove
             ),
-            position: RecordPosition {
+            buf_pos: BufferPosition {
                 start: 0,
                 seq_pos: Vec::with_capacity(2),
             },
+            position: Position::new(0, 0),
             n_searched: 0,
             finished: false,
-            grow_strategy: grow_strategy,
+            //prev_records: 0,
+            buf_strategy: buf_strategy,
         }
     }
 
     #[inline]
-    pub fn proceed(&mut self) -> Option<Result<(), ParseError>> {
+    pub fn proceed(&mut self) -> Option<Result<(), Error>> {
 
-        if self.finished {
+        if self.finished || ! self.initialized() && ! try_opt!(self.init()) {
             return None;
         }
 
-        if ! try_opt!(self.read_next()) {
-            if ! try_opt!(self.next_complete()) {
-                return None;
-            }
+        if ! self.buf_pos.is_new() {
+            self.next_pos();
+        }
+
+        if ! try_opt!(self.search()) && ! try_opt!(self.next_complete()) {
+            return None;
         }
 
         Some(Ok(()))
@@ -89,19 +95,32 @@ impl<R, S> Reader<R, S>
 
     /// Search the next FASTA record and return a `RefRecord` that
     /// borrows it's data from the underlying buffer of this reader
-    pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, ParseError>> {
+    pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, Error>> {
         self.proceed().map(|r| r.map(
-            move |_| RefRecord { buffer: self.get_buf(), position: &self.position }
+            move |_| RefRecord { buffer: self.get_buf(), buf_pos: &self.buf_pos }
         ))
     }
 
     /// Updates a `RecordSet` with a new buffer and searches for records. Old data will be erased.
     /// Returns `None` if the input reached its end
-    pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), ParseError>> {
+    pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
 
-        if self.finished || ! try_opt!(self.next_complete()) {
+        if self.finished {
             return None;
         }
+
+        if  ! self.initialized() {
+            if ! try_opt!(self.init()) {
+                return None;
+            }
+            if ! try_opt!(self.search()) {
+                return Some(Ok(()));
+            }
+        } else {
+            if ! try_opt!(self.next_complete()) {
+                return None;
+            }
+        };
 
         // copy buffer AFTER call to next_complete (initialization of buffer is done there)
         rset.buffer.clear();
@@ -111,9 +130,10 @@ impl<R, S> Reader<R, S>
         let mut n = 0;
         for pos in rset.positions.iter_mut() {
             n += 1;
-            pos.update(&self.position);
+            pos.update(&self.buf_pos);
 
-            if self.finished || ! try_opt!(self.read_next()) {
+            self.next_pos();
+            if self.finished || ! try_opt!(self.search()) {
                 rset.npos = n;
                 return Some(Ok(()));
             }
@@ -122,104 +142,130 @@ impl<R, S> Reader<R, S>
         // Add more positions if necessary
         loop {
             n += 1;
-            rset.positions.push(self.position.clone());
+            rset.positions.push(self.buf_pos.clone());
 
-            if self.finished || ! try_opt!(self.read_next()) {
+            self.next_pos();
+            if self.finished || ! try_opt!(self.search()) {
                 rset.npos = n;
                 return Some(Ok(()));
             }
         }
     }
 
+    // Sets starting points for next position
     #[inline]
-    fn read_next(&mut self) -> Result<bool, ParseError> {
-        // initialize (clear)
-        self.position.start = self.n_searched;
-        self.position.seq_pos.clear();
-        self.search()
+    fn next_pos(&mut self) {
+        self.position.line += self.buf_pos.seq_pos.len() as u64;
+        self.position.byte += (self.n_searched - self.buf_pos.start) as u64;
+        self.buf_pos.start = self.n_searched;
+        self.buf_pos.seq_pos.clear();
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_buf(&self) -> &[u8] {
         self.buffer.get_buf()
+    }
+
+    #[inline(always)]
+    fn initialized(&self) -> bool {
+        self.position.line != 0
+    }
+
+    // moves to the first record positon, ignoring newline / carriage return characters
+    fn init(&mut self) -> Result<bool, Error> {
+        if let Some((line_num, pos, byte)) = self.first_byte()? {
+            if byte == b'>' {
+                self.buf_pos.start = pos;
+                self.position.byte = pos as u64;
+                self.position.line = line_num as u64;
+                self.n_searched = pos + 1;
+                return Ok(true);
+            } else {
+                self.finished = true;
+                return Err(Error::InvalidStart {
+                    pos: self.position.byte as usize + pos,
+                    found: byte
+                });
+            }
+        }
+        self.finished = true;
+        Ok(false)
+    }
+
+    fn first_byte(&mut self) -> Result<Option<(usize, usize, u8)>, Error> {
+
+        let n = fill_buf(&mut self.buffer)?;
+        if n == 0 {
+            return Ok(None);
+        }
+
+        let mut pos = 0;
+        let mut line_num = 0;
+
+        for line in self.get_buf().split(|b| *b == b'\n') {
+            line_num += 1;
+            if let Some(b) = line.first() {
+                if *b != b'\r' {
+                    return Ok(Some((line_num, pos, *b)));
+                }
+            }
+            pos += line.len() + 1;
+        }
+        Ok(None)
     }
 
     /// Finds the position of the next record
     /// and returns true if found; false if end of buffer reached.
     #[inline]
-    fn search(&mut self) -> Result<bool, ParseError> {
-
-        let bufsize = self.get_buf().len();
-
-        while let Some(pos) = memchr(b'\n', &self.get_buf()[self.n_searched .. ]) {
-            // don't search the last byte, since we need to look forward one byte, looking for the next record
-            let pos = self.n_searched + pos;
-            let next_line_start = pos + 1;
-
-            // start of next record is not actually a sequence start, but indicates end of Record
-            self.n_searched = next_line_start;
-
-            if next_line_start == bufsize {
-                // cannot check next byte -> treat as incomplete
-                self.n_searched -= 1;  // make sure last byte is re-searched next time
-                return self.check_end();
-            }
-
-            self.position.seq_pos.push(pos);
-            if self.position.seq_pos.len() > 1 && self.get_buf()[next_line_start] == b'>' {
-                // next found
-                return Ok(true);
-            }
+    fn search(&mut self) -> Result<bool, Error> {
+        if self._search() {
+            return Ok(true);
         }
 
-        // record end not found
-        self.n_searched = bufsize;
-
-        self.check_end()
-    }
-
-    // checks if the buffer size is smaller than expected, indicating EOF
-    #[inline]
-    fn check_end(&mut self) -> Result<bool, ParseError> {
-        let bufsize = self.get_buf().len();
-        if bufsize < self.buffer.capacity() && bufsize > 0 { // bufsize == 0 means that init() has not yet been executed
+        // nothing found
+        if self.get_buf().len() < self.buffer.capacity() {
             // EOF reached, there will be no next record
             self.finished = true;
-            self.position.seq_pos.push(self.n_searched);
-            if self.position.seq_pos.len() == 1 {
-                return Err(ParseError::UnexpectedEnd);
+            self.buf_pos.seq_pos.push(self.n_searched);
+            if self.buf_pos.seq_pos.len() == 1 {
+                return Err(Error::UnexpectedEnd {
+                    line: self.position.line as usize,
+                });
             }
             return Ok(true);
         }
         Ok(false)
     }
 
-    // moves to the first record posiion, ignoring newline / carriage return characters
+    // returns true if complete position found, false if end of buffer reached.
     #[inline]
-    fn init(&mut self) -> Result<bool, ParseError> {
-        loop {
-            let n = fill_buf(&mut self.buffer)?;
-            if n == 0 {
-                self.finished = true;
-                return Ok(false);
+    fn _search(&mut self) -> bool {
+
+        let bufsize = self.get_buf().len();
+
+        while let Some(pos) = memchr(b'\n', &self.get_buf()[self.n_searched .. ]) {
+            // don't search the last byte, since we need to look forward one byte (check for next record)
+            let pos = self.n_searched + pos;
+            let next_line_start = pos + 1;
+            self.n_searched = next_line_start;
+
+            if next_line_start == bufsize {
+                // cannot check next byte -> treat as incomplete
+                self.n_searched -= 1;  // make sure last byte is re-searched next time
+                return false;
             }
-            if let Some((i, c)) = self.buffer.get_buf()
-                                      .iter()
-                                      .enumerate()
-                                      .skip_while(|&(_, c)| *c == b'\r' || *c == b'\n')
-                                      .next() {
-                if *c != b'>' {
-                    self.finished = true;
-                    return Err(ParseError::InvalidStart(i));
-                }
-                self.position.start = i;
-                self.n_searched = i + 1;
-                return Ok(true);
+
+            self.buf_pos.seq_pos.push(pos);
+            if self.buf_pos.seq_pos.len() > 1 && self.get_buf()[next_line_start] == b'>' {
+                // complete record was found
+                return true;
             }
-            // whole buffer consists of newlines (unlikely)
-            let cap = self.buffer.capacity();
-            self.buffer.consume(cap);
         }
+
+        // record end not found
+        self.n_searched = bufsize;
+
+        false
     }
 
     /// To be called when the end of the buffer is reached and `next_pos` does not find
@@ -227,35 +273,16 @@ impl<R, S> Reader<R, S>
     /// If the record still doesn't fit in, the buffer will be enlarged.
     /// After calling this function, the position will therefore always be 'complete'.
     /// this function assumes that the buffer was fully searched
-    #[inline]
-    fn next_complete(&mut self) -> Result<bool, ParseError> {
+    fn next_complete(&mut self) -> Result<bool, Error> {
 
         loop {
-
-            if self.get_buf().len() == 0 {
-                // not yet initialized
-                if ! self.init()? {
-                    return Ok(false);
-                }
-
-            } else if self.position.start == 0 {
-                // first record -> buffer too small, grow until big enough
-                let cap = self.buffer.capacity();
-                let new_size = self.grow_strategy.new_size(cap).ok_or(ParseError::BufferOverflow)?;
-                let additional = new_size - cap;
-                self.buffer.grow(additional);
+            if self.buf_pos.start == 0 {
+                // first record -> buffer too small
+                self.grow()?;
 
             } else {
                 // not the first record -> buffer may be big enough
-                // move incomplete bytes to start of buffer and retry
-                let consumed = self.position.start;
-                self.buffer.consume(consumed);
-                self.buffer.make_room();
-                self.position.start = 0;
-                self.n_searched -= consumed;
-                for s in &mut self.position.seq_pos {
-                    *s -= consumed;
-                }
+                self.make_room();
             }
 
             // fill up remaining buffer
@@ -267,53 +294,168 @@ impl<R, S> Reader<R, S>
         }
     }
 
+    // grow buffer
+    fn grow(&mut self) -> Result<(), Error> {
+        let cap = self.buffer.capacity();
+        let new_size = self.buf_strategy.grow_to(cap).ok_or(Error::BufferLimit)?;
+        let additional = new_size - cap;
+        self.buffer.grow(additional);
+        Ok(())
+    }
+
+    // move incomplete bytes to start of buffer
+    fn make_room(&mut self) {
+        let consumed = self.buf_pos.start;
+        self.buffer.consume(consumed);
+        self.buffer.make_room();
+        self.buf_pos.start = 0;
+        self.n_searched -= consumed;
+        for s in &mut self.buf_pos.seq_pos {
+            *s -= consumed;
+        }
+        // // eventually resize the buffer back
+        // let n_records = self.position.record() - self.prev_records;
+        // if let Some(limit) = self.buf_strategy.shrink_to(n_records as usize) {
+        //     let b = buf_redux::BufReader::with_cap_and_strategies(
+        //         ::std::io::Cursor::new(vec![]), 0,
+        //         ReadAlways, buf_redux::strategy::NeverMove
+        //     );
+        //     ::std::mem::replace(&mut self.buffer, b);
+        //     self.buffer.resize(max(limit, *self.buf_pos.seq_pos.last().unwrap_or(&self.buf_pos.start)))
+        // }
+    }
+
+    /// Returns the current position (useful with `seek()`).
+    /// If `next()` or `proceed()` have not yet been called, `None` will be returned.
+    #[inline]
+    pub fn position(&self) -> Option<&Position> {
+        if self.buf_pos.is_new() {
+            return None;
+        }
+        Some(&self.position)
+    }
+
     // TODO: these methods are shared with RefRecord -> another trait?
 
+    #[inline]
     pub fn seq_lines(&self) -> SeqLines {
-        self.position.seq_lines(self.get_buf())
+        self.buf_pos.seq_lines(self.get_buf())
     }
 
+    #[inline]
     pub fn owned_seq(&self) -> Vec<u8> {
-        self.position.owned_seq(self.get_buf())
+        self.buf_pos.owned_seq(self.get_buf())
     }
 
+    #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
-        self.position.get_owned_record(self.get_buf())
+        self.buf_pos.get_owned_record(self.get_buf())
     }
 
+    #[inline]
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.position.write_unchanged(writer, self.get_buf())
+        self.buf_pos.write_unchanged(writer, self.get_buf())
     }
 }
 
+impl<R, S> Reader<R, S>
+    where R: io::Read + Seek,
+          S: BufStrategy
+{
+    /// Seeks to a specified position.
+    /// Keep the underyling buffer if the seek position is found within it, otherwise it has to be
+    /// discarded.
+    /// If an error was returned before, seeking to that position will return the same error.
+    /// The same is not always true with `None`. If there is no newline character at the end of the
+    /// file, the last record will be returned instead of `None`.
+    pub fn seek(&mut self, pos: &Position) -> Result<(), Error> {
+        self.finished = false;
+        let diff = pos.byte as i64 - self.position.byte as i64;
+        let rel_pos = self.buf_pos.start as i64 + diff;
+        if rel_pos >= 0 && rel_pos < (self.get_buf().len() as i64) {
+            // position reachable within buffer -> no actual seeking necessary
+            self.n_searched = rel_pos as usize;
+            self.buf_pos.reset(rel_pos as usize);
+            self.position = pos.clone();
+            return Ok(());
+        }
+        self.position = pos.clone();
+        self.n_searched = 0;
+        self.buffer.seek(io::SeekFrom::Start(pos.byte))?;
+        fill_buf(&mut self.buffer)?;
+        self.buf_pos.reset(0);
+        Ok(())
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Position {
+    line: u64,
+    byte: u64,
+}
+
+impl Position {
+    pub fn new(line: u64, byte: u64) -> Position {
+        Position { line: line, byte: byte }
+    }
+
+    /// Line number (starting with 1)
+    pub fn line(&self) -> u64 {
+        self.line
+    }
+
+    /// Byte offset within the file
+    pub fn byte(&self) -> u64 {
+        self.byte
+    }
+}
 
 #[derive(Debug)]
-pub enum ParseError {
+pub enum Error {
+    /// io::Error
     Io(io::Error),
-    InvalidStart(usize),
-    UnexpectedEnd,
-    BufferOverflow,
+    /// File start is not '>'
+    InvalidStart {
+        /// byte offset (0-based index)
+        pos: usize,
+        /// byte that was found instead
+        found: u8,
+    },
+    /// Truncated record (no sequence found)
+    UnexpectedEnd {
+        /// line number (1-based count)
+        line: usize,
+    },
+    /// Size limit of buffer was reached, which happens if `BufStrategy::new_size()` returned
+    /// `None` (not the case by default).
+    BufferLimit,
 }
 
 
-impl fmt::Display for ParseError {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ParseError::Io(ref e) => write!(f, "{}", e),
-            ParseError::InvalidStart(pos) => write!(f, "Expected > at file start (position: {})", pos),
-            ParseError::UnexpectedEnd => write!(f, "Unexpected end of input"),
-            ParseError::BufferOverflow => write!(f, "Buffer overflow"),
+            Error::Io(ref e) => write!(f, "{}", e),
+            Error::InvalidStart { pos, found } => write!(f,
+                "Expected '>' but found '{}' at file start, position {}",
+                (found as char).escape_default(), pos
+            ),
+            Error::UnexpectedEnd { line } => write!(f,
+                "Unexpected end of input at line {}", line
+            ),
+            Error::BufferLimit => write!(f, "Buffer limit reached"),
         }
     }
 }
 
-impl From<io::Error> for ParseError {
-    fn from(e: io::Error) -> ParseError {
-        ParseError::Io(e)
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Error {
+        Error::Io(e)
     }
 }
 
-impl error::Error for ParseError {
+impl error::Error for Error {
     fn description(&self) -> &str { "FASTA parsing error" }
 }
 
@@ -321,14 +463,26 @@ impl error::Error for ParseError {
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct RecordPosition {
+struct BufferPosition {
     /// index of '>'
     start: usize,
     /// Vec with indices of line endings just *before* line start (pos - 1) referred to
     seq_pos: Vec<usize>,
 }
 
-impl RecordPosition {
+impl BufferPosition {
+
+    #[inline]
+    fn is_new(&self) -> bool {
+        self.seq_pos.len() == 0
+    }
+
+    #[inline]
+    fn reset(&mut self, start: usize) {
+        self.seq_pos.clear();
+        self.start = start;
+    }
+
     #[inline]
     fn head<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
         trim_cr(&buffer[self.start + 1 .. *self.seq_pos.first().unwrap()])
@@ -430,16 +584,16 @@ pub trait Record {
 
 impl<R, S> Record for Reader<R, S>
     where R: io::Read,
-          S: BufGrowStrategy
+          S: BufStrategy
 {
     #[inline]
     fn head(&self) -> &[u8] {
-        self.position.head(self.get_buf())
+        self.buf_pos.head(self.get_buf())
     }
 
     #[inline]
     fn seq(&self) -> &[u8] {
-        self.position.seq(self.get_buf())
+        self.buf_pos.seq(self.get_buf())
     }
 
     #[inline]
@@ -460,7 +614,7 @@ impl<R, S> Record for Reader<R, S>
 #[derive(Debug, Clone)]
 pub struct RefRecord<'a> {
     buffer: &'a [u8],
-    position: &'a RecordPosition,
+    buf_pos: &'a BufferPosition,
 }
 
 
@@ -468,7 +622,7 @@ impl<'a> Record for RefRecord<'a> {
 
     #[inline]
     fn head(&self) -> &[u8] {
-        self.position.head(self.buffer)
+        self.buf_pos.head(self.buffer)
     }
 
     /// Return the FASTA sequence as byte slice.
@@ -478,7 +632,7 @@ impl<'a> Record for RefRecord<'a> {
     /// breaks, or collect into an owned sequence using `owned_seq()`
     #[inline]
     fn seq(&self) -> &[u8] {
-        self.position.seq(self.buffer)
+        self.buf_pos.seq(self.buffer)
     }
 
     #[inline]
@@ -499,25 +653,25 @@ impl<'a> Record for RefRecord<'a> {
 impl<'a> RefRecord<'a> {
     /// Return an iterator over all sequence lines in the data
     pub fn seq_lines(&self) -> SeqLines {
-        self.position.seq_lines(self.buffer)
+        self.buf_pos.seq_lines(self.buffer)
     }
 
     /// Returns the sequence as owned `Vec`. **Note**: This function
     /// must be called in order to obtain a sequence that does not contain
     /// line endings (as returned by `seq()`)
     pub fn owned_seq(&self) -> Vec<u8> {
-        self.position.owned_seq(self.buffer)
+        self.buf_pos.owned_seq(self.buffer)
     }
 
     /// Creates an owned copy of the record.
     pub fn to_owned_record(&self) -> OwnedRecord {
-        self.position.get_owned_record(self.buffer)
+        self.buf_pos.get_owned_record(self.buffer)
     }
 
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.position.write_unchanged(writer, self.buffer)
+        self.buf_pos.write_unchanged(writer, self.buffer)
     }
 }
 
@@ -537,9 +691,17 @@ impl<'a> Iterator for SeqLines<'a> {
     }
 }
 
+impl<'a> DoubleEndedIterator for SeqLines<'a> {
+    fn next_back(&mut self) -> Option<&'a [u8]> {
+        self.pos_iter.next_back().map(
+            |(start, next_start)| trim_cr(&self.data[*start + 1 .. *next_start])
+        )
+    }
+}
+
 
 /// A FASTA record that ownes its data (requiring two allocations)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnedRecord {
     pub head: Vec<u8>,
     pub seq: Vec<u8>,
@@ -576,7 +738,7 @@ impl Record for OwnedRecord {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
     buffer: Vec<u8>,
-    positions: Vec<RecordPosition>,
+    positions: Vec<BufferPosition>,
     npos: usize,
 }
 
@@ -589,7 +751,6 @@ impl Default for RecordSet {
         }
     }
 }
-
 
 
 impl<'a> iter::IntoIterator for &'a RecordSet {
@@ -606,7 +767,7 @@ impl<'a> iter::IntoIterator for &'a RecordSet {
 
 pub struct RecordSetIter<'a> {
     buffer: &'a [u8],
-    pos: iter::Take<slice::Iter<'a, RecordPosition>>
+    pos: iter::Take<slice::Iter<'a, BufferPosition>>
 }
 
 impl<'a> Iterator for RecordSetIter<'a> {
@@ -616,7 +777,7 @@ impl<'a> Iterator for RecordSetIter<'a> {
         self.pos.next().map(|p| {
             RefRecord {
                 buffer: self.buffer,
-                position: p,
+                buf_pos: p,
             }
         })
     }
@@ -697,6 +858,7 @@ pub fn write_wrap_seq<W>(writer: &mut W, seq: &[u8], wrap: usize)
     -> io::Result<()>
     where W: io::Write
 {
+    assert!(wrap > 0);
     for chunk in seq.chunks(wrap) {
         writer.write_all(chunk)?;
         writer.write_all(b"\n")?;
@@ -723,6 +885,7 @@ pub fn write_wrap_seq_iter<'a, W, S>(writer: &mut W, seq: S, wrap: usize)
     -> io::Result<()>
     where W: io::Write, S: IntoIterator<Item=&'a [u8]>
 {
+    assert!(wrap > 0);
     let mut n_line = 0;
     for subseq in seq {
         let mut chunk = subseq;
