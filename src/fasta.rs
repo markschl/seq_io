@@ -8,7 +8,7 @@ use std::slice;
 use std::iter;
 use std::str::{self,Utf8Error};
 
-use memchr::memchr;
+use memchr::Memchr;
 use buf_redux;
 
 use super::*;
@@ -25,7 +25,7 @@ pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
     buffer: buf_redux::BufReader<R, ReadAlways, buf_redux::strategy::NeverMove>,
     buf_pos: BufferPosition,
     position: Position,
-    n_searched: usize,
+    search_pos: usize,
     finished: bool,
     //prev_records: u64,
     buf_strategy: S,
@@ -68,7 +68,7 @@ impl<R, S> Reader<R, S>
                 seq_pos: Vec::with_capacity(2),
             },
             position: Position::new(0, 0),
-            n_searched: 0,
+            search_pos: 0,
             finished: false,
             //prev_records: 0,
             buf_strategy: buf_strategy,
@@ -156,8 +156,8 @@ impl<R, S> Reader<R, S>
     #[inline]
     fn next_pos(&mut self) {
         self.position.line += self.buf_pos.seq_pos.len() as u64;
-        self.position.byte += (self.n_searched - self.buf_pos.start) as u64;
-        self.buf_pos.start = self.n_searched;
+        self.position.byte += (self.search_pos - self.buf_pos.start) as u64;
+        self.buf_pos.start = self.search_pos;
         self.buf_pos.seq_pos.clear();
     }
 
@@ -178,7 +178,7 @@ impl<R, S> Reader<R, S>
                 self.buf_pos.start = pos;
                 self.position.byte = pos as u64;
                 self.position.line = line_num as u64;
-                self.n_searched = pos + 1;
+                self.search_pos = pos + 1;
                 return Ok(true);
             } else {
                 self.finished = true;
@@ -226,7 +226,7 @@ impl<R, S> Reader<R, S>
         if self.get_buf().len() < self.buffer.capacity() {
             // EOF reached, there will be no next record
             self.finished = true;
-            self.buf_pos.seq_pos.push(self.n_searched);
+            self.buf_pos.seq_pos.push(self.search_pos);
             if self.buf_pos.seq_pos.len() == 1 {
                 return Err(Error::UnexpectedEnd {
                     line: self.position.line as usize,
@@ -243,27 +243,26 @@ impl<R, S> Reader<R, S>
 
         let bufsize = self.get_buf().len();
 
-        while let Some(pos) = memchr(b'\n', &self.get_buf()[self.n_searched .. ]) {
-            // don't search the last byte, since we need to look forward one byte (check for next record)
-            let pos = self.n_searched + pos;
+        for pos in Memchr::new(b'\n', &self.buffer.get_buf()[self.search_pos .. ]) {
+            let pos = self.search_pos + pos;
             let next_line_start = pos + 1;
-            self.n_searched = next_line_start;
 
             if next_line_start == bufsize {
                 // cannot check next byte -> treat as incomplete
-                self.n_searched -= 1;  // make sure last byte is re-searched next time
+                self.search_pos = pos; // make sure last byte is re-searched next time
                 return false;
             }
 
             self.buf_pos.seq_pos.push(pos);
             if self.buf_pos.seq_pos.len() > 1 && self.get_buf()[next_line_start] == b'>' {
                 // complete record was found
+                self.search_pos = next_line_start;
                 return true;
             }
         }
 
         // record end not found
-        self.n_searched = bufsize;
+        self.search_pos = bufsize;
 
         false
     }
@@ -309,7 +308,7 @@ impl<R, S> Reader<R, S>
         self.buffer.consume(consumed);
         self.buffer.make_room();
         self.buf_pos.start = 0;
-        self.n_searched -= consumed;
+        self.search_pos -= consumed;
         for s in &mut self.buf_pos.seq_pos {
             *s -= consumed;
         }
@@ -374,13 +373,13 @@ impl<R, S> Reader<R, S>
         let rel_pos = self.buf_pos.start as i64 + diff;
         if rel_pos >= 0 && rel_pos < (self.get_buf().len() as i64) {
             // position reachable within buffer -> no actual seeking necessary
-            self.n_searched = rel_pos as usize;
+            self.search_pos = rel_pos as usize;
             self.buf_pos.reset(rel_pos as usize);
             self.position = pos.clone();
             return Ok(());
         }
         self.position = pos.clone();
-        self.n_searched = 0;
+        self.search_pos = 0;
         self.buffer.seek(io::SeekFrom::Start(pos.byte))?;
         fill_buf(&mut self.buffer)?;
         self.buf_pos.reset(0);

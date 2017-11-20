@@ -13,7 +13,7 @@ exclude = [
 ]
 
 [dependencies]
-memchr = "^1"
+memchr = "2.0"
 buf_redux = "^0.6"
 scoped_threadpool ="^0.1"
 crossbeam = "^0.2"
