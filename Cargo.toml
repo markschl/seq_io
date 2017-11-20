@@ -14,17 +14,17 @@ exclude = [
 
 [dependencies]
 memchr = "2.0"
-buf_redux = "^0.6"
-scoped_threadpool ="^0.1"
-crossbeam = "^0.2"
+buf_redux = "0.6"
+scoped_threadpool ="0.1"
+crossbeam = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 
 [dev-dependencies]
-bio = "^0.14"
-fastq = "^0.5"
-matches = "^0.1"
-lazy_static = "^0.2"
+bio = "0.15"
+fastq = "0.5"
+matches = "0.1"
+lazy_static = "0.2"
 
 [profile.bench]
 lto = true
