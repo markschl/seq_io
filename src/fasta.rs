@@ -183,7 +183,7 @@ impl<R, S> Reader<R, S>
             } else {
                 self.finished = true;
                 return Err(Error::InvalidStart {
-                    pos: self.position.byte as usize + pos,
+                    line: line_num,
                     found: byte
                 });
             }
@@ -417,8 +417,8 @@ pub enum Error {
     Io(io::Error),
     /// File start is not '>'
     InvalidStart {
-        /// byte offset (0-based index)
-        pos: usize,
+        /// line number (1-based)
+        line: usize,
         /// byte that was found instead
         found: u8,
     },
@@ -436,15 +436,17 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::Io(ref e) => write!(f, "{}", e),
-            Error::InvalidStart { pos, found } => write!(f,
-                "Expected '>' but found '{}' at file start, position {}",
-                (found as char).escape_default(), pos
+            Error::Io(ref e) => e.fmt(f),
+            Error::InvalidStart { line, found } => write!(f,
+                "FASTA parse error: expected '>' but found '{}' at file start, line {}.",
+                (found as char).escape_default(), line
             ),
             Error::UnexpectedEnd { line } => write!(f,
-                "Unexpected end of input at line {}", line
+                "FASTA parse error: unexpected end of input at line {}", line
             ),
-            Error::BufferLimit => write!(f, "Buffer limit reached"),
+            Error::BufferLimit => write!(f,
+                "FASTA parse error: buffer limit reached."
+            ),
         }
     }
 }
@@ -456,10 +458,15 @@ impl From<io::Error> for Error {
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str { "FASTA parsing error" }
+    fn description(&self) -> &str {
+        match *self {
+            Error::Io(ref e) => e.description(),
+            Error::InvalidStart {..} => "invalid record start",
+            Error::UnexpectedEnd {..} => "unexpected end of input",
+            Error::BufferLimit => "buffer limit reached",
+        }
+    }
 }
-
-
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

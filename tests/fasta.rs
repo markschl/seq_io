@@ -87,7 +87,7 @@ fn test_fasta_reader() {
 fn test_fasta_invalid_start() {
     let mut reader = Reader::new(&b"\r\nid\nATGC\n"[..]);
     let rec = reader.next().unwrap();
-    assert_matches!(rec, Err(Error::InvalidStart { pos: 2, found: b'i' }));
+    assert_matches!(rec, Err(Error::InvalidStart { line: 2, found: b'i' }));
 }
 
 #[test]

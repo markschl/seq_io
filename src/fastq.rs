@@ -498,21 +498,25 @@ impl fmt::Display for ErrorPosition {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::Io(ref e) => write!(f, "{}", e),
+            Error::Io(ref e) => e.fmt(f),
             Error::UnequalLengths { seq, qual, ref pos } => write!(f,
-                "Unequal lengths: sequence length is {}, but quality length is {} ({})",
+                "FASTQ parse error: sequence length is {}, but quality length is {} ({}).",
                 seq, qual, pos
             ),
             Error::InvalidStart { found, ref pos } => write!(f,
-                "Invalid record start: expected '@' but found '{}' ({})",
+                "FASTQ parse error: expected '@' at record start but found '{}' ({}).",
                 (found as char).escape_default(), pos
             ),
             Error::InvalidSep { found, ref pos } => write!(f,
-                "Invalid separator: expected '+' but found '{}' ({})",
+                "FASTQ parse error: Expected '+' separator but found '{}' ({}).",
                 (found as char).escape_default(), pos
             ),
-            Error::UnexpectedEnd { ref pos } => write!(f, "Unexpected end of input ({})", pos),
-            Error::BufferLimit => write!(f, "Buffer limit reached"),
+            Error::UnexpectedEnd { ref pos } => write!(f,
+                "FASTQ parse error: unexpected end of input ({}).", pos
+            ),
+            Error::BufferLimit => write!(f,
+                "FASTQ parse error: Buffer limit reached."
+            ),
         }
     }
 }
@@ -524,7 +528,23 @@ impl From<io::Error> for Error {
 }
 
 impl StdError for Error {
-    fn description(&self) -> &str { "FASTQ parsing Error" }
+    fn description(&self) -> &str {
+        match *self {
+            Error::Io(ref e) => e.description(),
+            Error::UnequalLengths {..} => "sequence and quality lengths are different",
+            Error::InvalidStart {..} => "invalid record start",
+            Error::InvalidSep {..} => "invalid record separator",
+            Error::UnexpectedEnd {..} => "unexpected end of input",
+            Error::BufferLimit => "buffer limit reached",
+        }
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        match *self {
+            Error::Io(ref err) => Some(err),
+            _ => None
+        }
+    }
 }
 
 
