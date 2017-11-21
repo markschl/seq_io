@@ -63,7 +63,8 @@
 //!         }
 //!         // Some(value) will stop the reader, and the value will be returned.
 //!         // In the case of never stopping, we need to give the compiler a hint about the
-//!         // type parameter, thus the special 'turbofish' notation is needed.
+//!         // type parameter, thus the special 'turbofish' notation is needed,
+//!         // hoping on progress here: https://github.com/rust-lang/rust/issues/27336
 //!         None::<()>
 //! }).unwrap();
 //! ```
