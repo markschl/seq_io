@@ -1,31 +1,31 @@
 format method seqlen other owned parallel reader ns ns_dev mb_per_s
-fasta iter 1000    seqio 21019844 366681 5109
-fasta iter 1000  owned  bio 64476182 1780118 1665
-fasta iter 200    seqio 7814941 279487 3506
-fasta iter 200  owned  bio 42472445 668823 645
-fasta iter 500    seqio 13394699 127017 4285
-fasta iter 500  owned  bio 48822175 751297 1175
-fasta iter 500  owned  seqio 25143410 919469 2282
-fasta iter 500 multiline   seqio 17126118 248048 3374
-fasta iter 500 multiline owned  bio 84543894 404559 683
-fasta iter 500 multiline owned  seqio 50112609 398751 1153
-fasta iter 500 records  parallel seqio 22542091 956322 2546
-fasta iter 500 recset   seqio 17310839 476171 3315
-fasta iter 500 recset  parallel seqio 22620992 295887 2537
-fasta seq 500    bio 48782520 321083 1176
-fasta seq 500    seqio 13918210 439975 4124
-fastq iter 1000    fastqrs 39742936 617629 5226
-fastq iter 1000    seqio 39634738 979749 5240
-fastq iter 1000  owned  bio 100661240 652629 2063
-fastq iter 200    fastqrs 13987675 272159 3410
-fastq iter 200    seqio 13501040 228119 3533
-fastq iter 200  owned  bio 59149618 448513 806
-fastq iter 500    fastqrs 23844298 548669 4516
-fastq iter 500    seqio 22910365 278380 4700
-fastq iter 500  owned  bio 75047111 578004 1435
-fastq iter 500  owned  fastqrs 41833358 319463 2574
-fastq iter 500  owned  seqio 38123123 412444 2825
-fastq iter 500 records  parallel seqio 37149232 856790 2899
-fastq iter 500 recset   seqio 28408573 422061 3791
-fastq iter 500 recset  parallel fastqrs 37836264 1034152 2846
-fastq iter 500 recset  parallel seqio 37170991 1019123 2897
+fasta iter 1000    seqio 19665248 1079121 5461
+fasta iter 1000  owned  bio 61363569 1473617 1750
+fasta iter 200    seqio 7543176 513500 3632
+fasta iter 200  owned  bio 41540409 1825612 659
+fasta iter 500    seqio 12582475 302014 4561
+fasta iter 500  owned  bio 47557401 874050 1206
+fasta iter 500  owned  seqio 24529191 607614 2340
+fasta iter 500 multiline   seqio 16342073 522977 3536
+fasta iter 500 multiline owned  bio 89969613 1428538 642
+fasta iter 500 multiline owned  seqio 49580650 1076778 1165
+fasta iter 500 records  parallel seqio 22181411 559852 2587
+fasta iter 500 recset   seqio 17116508 658302 3353
+fasta iter 500 recset  parallel seqio 22178215 273897 2588
+fasta seq 500    bio 48488073 626024 1183
+fasta seq 500    seqio 13069656 537750 4391
+fastq iter 1000    fastqrs 36053674 936399 5760
+fastq iter 1000    seqio 37139008 361731 5592
+fastq iter 1000  owned  bio 96576917 1562041 2150
+fastq iter 200    fastqrs 12321785 275048 3871
+fastq iter 200    seqio 13286127 211989 3590
+fastq iter 200  owned  bio 57537102 1118962 829
+fastq iter 500    fastqrs 21856757 1473687 4927
+fastq iter 500    seqio 22256134 3781873 4839
+fastq iter 500  owned  bio 73093343 1468347 1473
+fastq iter 500  owned  fastqrs 39357458 832765 2736
+fastq iter 500  owned  seqio 37636178 618076 2861
+fastq iter 500 records  parallel seqio 36016760 456503 2990
+fastq iter 500 recset   seqio 27687284 647572 3889
+fastq iter 500 recset  parallel fastqrs 33088114 732258 3254
+fastq iter 500 recset  parallel seqio 36150796 435763 2979
