@@ -312,16 +312,6 @@ impl<R, S> Reader<R, S>
         for s in &mut self.buf_pos.seq_pos {
             *s -= consumed;
         }
-        // // eventually resize the buffer back
-        // let n_records = self.position.record() - self.prev_records;
-        // if let Some(limit) = self.buf_strategy.shrink_to(n_records as usize) {
-        //     let b = buf_redux::BufReader::with_cap_and_strategies(
-        //         ::std::io::Cursor::new(vec![]), 0,
-        //         ReadAlways, buf_redux::strategy::NeverMove
-        //     );
-        //     ::std::mem::replace(&mut self.buffer, b);
-        //     self.buffer.resize(max(limit, *self.buf_pos.seq_pos.last().unwrap_or(&self.buf_pos.start)))
-        // }
     }
 
     /// Returns the current position (useful with `seek()`).
@@ -332,28 +322,6 @@ impl<R, S> Reader<R, S>
             return None;
         }
         Some(&self.position)
-    }
-
-    // TODO: these methods are shared with RefRecord -> another trait?
-
-    #[inline]
-    pub fn seq_lines(&self) -> SeqLines {
-        self.buf_pos.seq_lines(self.get_buf())
-    }
-
-    #[inline]
-    pub fn owned_seq(&self) -> Vec<u8> {
-        self.buf_pos.owned_seq(self.get_buf())
-    }
-
-    #[inline]
-    pub fn to_owned_record(&self) -> OwnedRecord {
-        self.buf_pos.get_owned_record(self.get_buf())
-    }
-
-    #[inline]
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.buf_pos.write_unchanged(writer, self.get_buf())
     }
 }
 
@@ -584,34 +552,6 @@ pub trait Record {
     fn id_desc(&self) -> Result<(&str, Option<&str>), Utf8Error> {
         let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
         Ok((h.next().unwrap(), h.next()))
-    }
-}
-
-
-impl<R, S> Record for Reader<R, S>
-    where R: io::Read,
-          S: BufStrategy
-{
-    #[inline]
-    fn head(&self) -> &[u8] {
-        self.buf_pos.head(self.get_buf())
-    }
-
-    #[inline]
-    fn seq(&self) -> &[u8] {
-        self.buf_pos.seq(self.get_buf())
-    }
-
-    #[inline]
-    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        write_head(writer, self.head())?;
-        write_seq_iter(writer, self.seq_lines())
-    }
-
-    #[inline]
-    fn write_wrap<W: io::Write>(&self, writer: &mut W, wrap: usize) -> io::Result<()> {
-        write_head(writer, self.head())?;
-        write_wrap_seq_iter(writer, self.seq_lines(), wrap)
     }
 }
 

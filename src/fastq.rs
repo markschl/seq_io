@@ -270,8 +270,8 @@ impl<R, S> Reader<R, S>
         if seq_len != qual_len {
             self.finished = true;
             return Err(Error::UnequalLengths {
-                seq: self.seq().len(),
-                qual: self.qual().len(),
+                seq: self.buf_pos.seq(self.get_buf()).len(),
+                qual: self.buf_pos.qual(self.get_buf()).len(),
                 pos: self.get_error_pos(0, true)
             });
         }
@@ -280,9 +280,20 @@ impl<R, S> Reader<R, S>
 
     #[inline(never)]
     fn get_error_pos(&self, offset: u64, parse_id: bool) -> ErrorPosition {
+        let id =
+            if parse_id {
+                let id = self.buf_pos
+                    .head(self.get_buf())
+                    .split(|b| *b == b' ')
+                    .next()
+                    .unwrap();
+                Some(String::from_utf8_lossy(id).into())
+            } else {
+                None
+            };
         ErrorPosition {
             line: self.position.line + offset,
-            id: if parse_id { Some(String::from_utf8_lossy(self.id_bytes()).into()) } else { None }
+            id: id
         }
     }
 
@@ -370,19 +381,6 @@ impl<R, S> Reader<R, S>
     #[inline]
     pub fn position(&self) -> &Position {
         &self.position
-    }
-
-    // TODO: these methods are shared with RefRecord -> another trait?
-    #[inline]
-    pub fn get_owned_record(&self) -> OwnedRecord {
-        self.buf_pos.get_owned_record(self.get_buf())
-    }
-
-    /// Writes a record to the given `io::Write` instance
-    /// by just writing the unmodified input, which is faster than `RefRecord::write`
-    #[inline]
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.buf_pos.write_unchanged(writer, self.get_buf())
     }
 }
 
@@ -648,27 +646,6 @@ pub trait Record {
     #[inline]
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         write_to(writer, self.head(), self.seq(), self.qual())
-    }
-}
-
-
-impl<R, S> Record for Reader<R, S>
-    where R: io::Read,
-          S: BufStrategy
-{
-    #[inline]
-    fn head(&self) -> &[u8] {
-        self.buf_pos.head(self.get_buf())
-    }
-
-    #[inline]
-    fn seq(&self) -> &[u8] {
-        self.buf_pos.seq(self.get_buf())
-    }
-
-    #[inline]
-    fn qual(&self) -> &[u8] {
-        self.buf_pos.qual(self.get_buf())
     }
 }
 
