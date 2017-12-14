@@ -20,8 +20,9 @@ to iterate over the sequence lines without doing any allocation or
 copying. The FASTQ parser does not support multiple sequence / quality lines.
 
 **Simple example:**
-Reads FASTA sequences from STDIN and writes long enough
-ones to STDOUT, otherwise prints a message.
+Reads FASTA sequences from STDIN and writes them to STDOUT
+if long enough. Otherwise it prints a message. This should
+be very fast because the sequence is not allocated (`seq_lines()`).
 ```rust
 use seq_io::fasta::{Reader,Record};
 use std::io;
@@ -31,14 +32,13 @@ let mut stdout = io::stdout();
 
 while let Some(result) = reader.next() {
     let record = result.unwrap();
-    // determine sequence length without having to allocate
-    // the whole sequence
+    // determine sequence length
     let seqlen = record.seq_lines()
                        .fold(0, |l, seq| l + seq.len());
     if seqlen > 100 {
         record.write_wrap(&mut stdout, 80).unwrap();
     } else {
-        println!("{} is only {} long", record.id().unwrap(), seqlen);
+        eprintln!("{} is only {} long", record.id().unwrap(), seqlen);
     }
 }
 ```
