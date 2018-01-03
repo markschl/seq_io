@@ -84,6 +84,18 @@ fn test_fasta_reader() {
 }
 
 #[test]
+fn test_fasta_full_seq() {
+    use std::borrow::Cow;
+    let mut reader = Reader::new(&b">id\nATGC\n"[..]);
+    let rec = reader.next().unwrap().unwrap();
+    assert_matches!(rec.full_seq(), Cow::Borrowed(b"ATGC"));
+
+    let mut reader = Reader::new(&b">id\nAT\nGC\n"[..]);
+    let rec = reader.next().unwrap().unwrap();
+    assert_eq!(rec.full_seq().into_owned(),  b"ATGC".to_owned());
+}
+
+#[test]
 fn test_fasta_invalid_start() {
     let mut reader = Reader::new(&b"\r\nid\nATGC\n"[..]);
     let rec = reader.next().unwrap();

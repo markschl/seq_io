@@ -7,6 +7,7 @@ use std::path::Path;
 use std::slice;
 use std::iter;
 use std::str::{self,Utf8Error};
+use std::borrow::Cow;
 
 use memchr::Memchr;
 use buf_redux;
@@ -558,6 +559,19 @@ impl<'a> RefRecord<'a> {
         SeqLines {
             data: &self.buffer,
             pos_iter: self.buf_pos.seq_pos.iter().zip(self.buf_pos.seq_pos.iter().skip(1))
+        }
+    }
+
+    /// Returns the full sequence. If the sequence consists of a single line,
+    /// then the sequence will be borrowed from the underlying buffer
+    /// (equivalent to calling `RefRecord::seq()`). If there are multiple
+    /// lines, an owned copy will be created (equivalent to `RefRecord::owned_seq()`).
+    pub fn full_seq(&self) -> Cow<[u8]> {
+        if self.buf_pos.seq_pos.len() == 2 {
+            // only one line
+            self.seq().into()
+        } else {
+            self.owned_seq().into()
         }
     }
 
