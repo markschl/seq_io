@@ -583,22 +583,6 @@ impl BufferPosition {
     fn qual<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
         trim_cr(&buffer[self.qual .. self.pos.1])
     }
-
-    #[inline]
-    fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
-        let data = &buffer[self.pos.0 .. self.pos.1];
-        writer.write_all(data)?;
-        writer.write_all(b"\n")
-    }
-
-    #[inline]
-    fn get_owned_record(&self, buffer: &[u8]) -> OwnedRecord {
-        OwnedRecord {
-            head: self.head(buffer).to_vec(),
-            seq: self.seq(buffer).to_vec(),
-            qual: self.qual(buffer).to_vec(),
-        }
-    }
 }
 
 
@@ -677,18 +661,24 @@ impl<'a> Record for RefRecord<'a> {
 }
 
 
-
 impl<'a> RefRecord<'a> {
     #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
-        self.buf_pos.get_owned_record(self.buffer)
+        OwnedRecord {
+            head: self.head().to_vec(),
+            seq: self.seq().to_vec(),
+            qual: self.qual().to_vec(),
+        }
     }
 
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.buf_pos.write_unchanged(writer, self.buffer)
+        #[inline]
+        let data = &self.buffer[self.buf_pos.pos.0 .. self.buf_pos.pos.1];
+        writer.write_all(data)?;
+        writer.write_all(b"\n")
     }
 }
 

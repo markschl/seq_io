@@ -458,55 +458,10 @@ impl BufferPosition {
     }
 
     #[inline]
-    fn head<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.start + 1 .. *self.seq_pos.first().unwrap()])
-    }
-
-    #[inline]
-    fn seq<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[*self.seq_pos.first().unwrap() + 1 .. *self.seq_pos.last().unwrap()])
-    }
-
-    #[inline]
-    fn write_unchanged<W: io::Write>(&self, writer: &mut W, buffer: &[u8]) -> io::Result<()> {
-        let data = &buffer[self.start .. *self.seq_pos.last().unwrap()];
-        writer.write_all(data)?;
-        if *data.last().unwrap() != b'\n' {
-            writer.write_all(&[b'\n'])?;
-        }
-        Ok(())
-    }
-
-    #[inline]
     fn update(&mut self, other: &Self) {
         self.start = other.start;
         self.seq_pos.clear();
         self.seq_pos.extend(&other.seq_pos);
-    }
-
-    #[inline]
-    fn seq_lines<'a>(&'a self, buffer: &'a [u8]) -> SeqLines<'a> {
-        SeqLines {
-            data: buffer,
-            pos_iter: self.seq_pos.iter().zip(self.seq_pos.iter().skip(1))
-        }
-    }
-
-    #[inline]
-    fn owned_seq(&self, buffer: &[u8]) -> Vec<u8> {
-        let mut seq = Vec::new();
-        for segment in self.seq_lines(buffer) {
-            seq.extend(segment);
-        }
-        return seq;
-    }
-
-    #[inline]
-    pub fn get_owned_record(&self, buffer: &[u8]) -> OwnedRecord {
-        OwnedRecord {
-            head: self.head(buffer).to_vec(),
-            seq: self.owned_seq(buffer),
-        }
     }
 }
 
@@ -568,7 +523,7 @@ impl<'a> Record for RefRecord<'a> {
 
     #[inline]
     fn head(&self) -> &[u8] {
-        self.buf_pos.head(self.buffer)
+        trim_cr(&self.buffer[self.buf_pos.start + 1 .. *self.buf_pos.seq_pos.first().unwrap()])
     }
 
     /// Return the FASTA sequence as byte slice.
@@ -578,7 +533,9 @@ impl<'a> Record for RefRecord<'a> {
     /// breaks, or collect into an owned sequence using `owned_seq()`
     #[inline]
     fn seq(&self) -> &[u8] {
-        self.buf_pos.seq(self.buffer)
+        let start = *self.buf_pos.seq_pos.first().unwrap() + 1;
+        let end = *self.buf_pos.seq_pos.last().unwrap();
+        trim_cr(&self.buffer[start..end])
     }
 
     #[inline]
@@ -595,29 +552,43 @@ impl<'a> Record for RefRecord<'a> {
 }
 
 
-
 impl<'a> RefRecord<'a> {
     /// Return an iterator over all sequence lines in the data
     pub fn seq_lines(&self) -> SeqLines {
-        self.buf_pos.seq_lines(self.buffer)
+        SeqLines {
+            data: &self.buffer,
+            pos_iter: self.buf_pos.seq_pos.iter().zip(self.buf_pos.seq_pos.iter().skip(1))
+        }
     }
 
     /// Returns the sequence as owned `Vec`. **Note**: This function
     /// must be called in order to obtain a sequence that does not contain
     /// line endings (as returned by `seq()`)
     pub fn owned_seq(&self) -> Vec<u8> {
-        self.buf_pos.owned_seq(self.buffer)
+        let mut seq = Vec::new();
+        for segment in self.seq_lines() {
+            seq.extend(segment);
+        }
+        return seq;
     }
 
     /// Creates an owned copy of the record.
     pub fn to_owned_record(&self) -> OwnedRecord {
-        self.buf_pos.get_owned_record(self.buffer)
+        OwnedRecord {
+            head: self.head().to_vec(),
+            seq: self.owned_seq()
+        }
     }
 
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        self.buf_pos.write_unchanged(writer, self.buffer)
+        let data = &self.buffer[self.buf_pos.start .. *self.buf_pos.seq_pos.last().unwrap()];
+        writer.write_all(data)?;
+        if *data.last().unwrap() != b'\n' {
+            writer.write_all(&[b'\n'])?;
+        }
+        Ok(())
     }
 }
 
