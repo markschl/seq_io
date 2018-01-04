@@ -8,15 +8,15 @@ This library provides an(other) attempt at parsing of the sequence formats FASTA
 
 **Features:**
 
-* Fast parsers
+* Fast readers
+* Flexible methods for writing FASTA and FASTQ
 * Informative errors
 * Support for seeking
-* Flexible methods for writing FASTA and FASTQ
 * Serde support (for owned data structures)
 * Functions for parallel processing
 
 The FASTA parser can read and write multi-line files and allows
-to iterate over the sequence lines without doing any allocation or
+iterating over the sequence lines without doing any allocation or
 copying. The FASTQ parser does not support multiple sequence / quality lines.
 
 **Simple example:**
@@ -44,12 +44,9 @@ while let Some(result) = reader.next() {
 ```
 
 Records are directly borrowing data from the internal buffered reader,
-unless `to_owned()` is called, which creates an owned `Record`.
-This is also done by the the reader from the [fastq-rs](https://github.com/aseyboldt/fastq-rs)
-crate.
-By default, the buffer will automatically grow if a record
-is too large to fit in. How it grows can be configured, it is
-also possible to set a size limit.
+therefore the `while let` is required. By default, the buffer will automatically
+grow if a record is too large to fit in. How it grows can be configured, it is
+also possible to set a size limit. Iterators over owned records are also provided.
 
 **Note:** Make sure to add `lto = true` to the release profile in `Cargo.toml`
 because calls to functions of the underlying buffered reader

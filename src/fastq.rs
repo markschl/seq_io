@@ -44,6 +44,17 @@ impl<R> Reader<R, DefaultBufStrategy>
     where R: io::Read
 {
     /// Creates a new reader with the default buffer size of 68 KB
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// use seq_io::fastq::{Reader,Record};
+    /// let fastq = b"@id\nACGT\n+\nIIII";
+    ///
+    /// let mut reader = Reader::new(&fastq[..]);
+    /// let record = reader.next().unwrap().unwrap();
+    /// assert_eq!(record.id(), Ok("id"))
+    /// ```
     pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
         Reader::with_cap_and_strategy(reader, BUFSIZE, DoubleUntil8M)
     }
@@ -55,6 +66,17 @@ impl<R> Reader<R, DefaultBufStrategy>
 }
 
 impl Reader<File, DefaultBufStrategy> {
+    /// Creates a reader from a file path.
+    ///
+    /// Example:
+    ///
+    /// ```no_run
+    /// use seq_io::fastq::Reader;
+    ///
+    /// let mut reader = Reader::from_path("seqs.fastq").unwrap();
+    ///
+    /// // (... do something with the reader)
+    /// ```
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
     }
@@ -65,8 +87,8 @@ impl<R, S> Reader<R, S>
     where R: io::Read,
           S: BufStrategy
 {
-    /// Creates a new reader with a given buffer capacity and growth strategy. See
-    /// [See here](trait.BufStrategy.html) for an example using the FASTA reader, but otherwise
+    /// Creates a new reader with a given buffer capacity and growth strategy.
+    /// [See here](../trait.BufStrategy.html) for an example using the FASTA reader, but otherwise
     /// equivalent.
     pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
@@ -101,8 +123,21 @@ impl<R, S> Reader<R, S>
         Some(Ok(()))
     }
 
-    /// Search the next FASTQ record and return a `RefRecord` that
-    /// borrows it's data from the underlying buffer of this reader
+    /// Searches the next FASTQ record and returns a [RefRecord](struct.RefRecord.html) that
+    /// borrows its data from the underlying buffer of this reader.
+    ///
+    /// Example:
+    ///
+    /// ```no_run
+    /// use seq_io::fastq::{Reader,Record};
+    ///
+    /// let mut reader = Reader::from_path("seqs.fastq").unwrap();
+    ///
+    /// while let Some(record) = reader.next() {
+    ///     let record = record.unwrap();
+    ///     println!("{}", record.id().unwrap());
+    /// }
+    /// ```
     pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, Error>> {
         self.proceed().map(|r| r.map(
             move |_| RefRecord { buffer: self.get_buf(), buf_pos: &self.buf_pos }
@@ -124,8 +159,9 @@ impl<R, S> Reader<R, S>
         self.get_buf().len() != 0
     }
 
-    /// Updates a `RecordSet` with a new buffer and searches for records. Old data will be erased.
-    /// Returns `None` if the input reached its end
+    /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
+    /// buffer are just copied over to the record set and the positions of all records are found.
+    /// Old data will be erased. Returns `None` if the input reached its end.
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
 
         if self.finished {
@@ -173,11 +209,11 @@ impl<R, S> Reader<R, S>
         self.buf_pos.pos.0 = self.buf_pos.pos.1 + 1;
     }
 
-    // Reads the current record  and returns true if found
-    // (false if incomplete because end of buffer reached)
+    // Reads the current record  and returns true if found.
+    // Returns false if incomplete because end of buffer reached,
     // meaning that the last record may be incomplete
-    // search_start >= self.buf_pos.start
-    // updates the position.
+    // search_start >= self.buf_pos.start.
+    // Updates the position.
     fn find(&mut self) -> Result<bool, Error> {
 
         self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
@@ -379,15 +415,41 @@ impl<R, S> Reader<R, S>
     }
 
     /// Returns the current position (useful with `seek()`)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate seq_io;
+    /// # fn main() {
+    /// use seq_io::fastq::{Reader,Position};
+    ///
+    /// let fastq = b"@id1
+    /// ACGT
+    /// +
+    /// IIII
+    /// @id2
+    /// TGCA
+    /// +
+    /// IIII";
+    ///
+    /// let mut reader = Reader::new(&fastq[..]);
+    ///
+    /// // skip one record
+    /// reader.next().unwrap();
+    /// // second position
+    /// reader.next().unwrap();
+    ///
+    /// assert_eq!(reader.position(), &Position::new(5, 17));
+    /// # }
+    /// ```
     #[inline]
     pub fn position(&self) -> &Position {
         &self.position
     }
 
-
-    /// Returns a borrowed iterator over all FASTA records. The records
+    /// Returns a borrowed iterator over all FASTQ records. The records
     /// are owned (`OwnedRecord`), this is therefore slower than using
-    /// the `Reader::next()`, but makes sense if an owned copy is required.
+    /// `Reader::next()`.
     ///
     /// # Example
     ///
@@ -423,42 +485,8 @@ impl<R, S> Reader<R, S>
         RecordsIter { rdr: self }
     }
 
-    /// Returns an iterator over all FASTA records like `Reader::records()`,
+    /// Returns an iterator over all FASTQ records like `Reader::records()`,
     /// but with the difference that it owns the underlying reader.
-    /// Returns a borrowed iterator over all FASTA records. The records
-    /// are owned (`OwnedRecord`), this is therefore slower than using
-    /// the `Reader::next()`, but makes sense if an owned copy is required.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # extern crate seq_io;
-    /// # fn main() {
-    /// use seq_io::fastq::{Reader,OwnedRecord};
-    ///
-    /// let fastq = b"@id1
-    /// ACGT
-    /// +
-    /// IIII
-    /// @id2
-    /// TGCA
-    /// +
-    /// IIII";
-    ///
-    /// let mut reader = Reader::new(&fastq[..]);
-    ///
-    /// let records: Result<Vec<_>, _> = reader
-    ///     .into_records()
-    ///     .collect();
-    ///
-    /// assert_eq!(records.unwrap(),
-    ///     vec![
-    ///         OwnedRecord {head: b"id1".to_vec(), seq: b"ACGT".to_vec(), qual: b"IIII".to_vec()},
-    ///         OwnedRecord {head: b"id2".to_vec(), seq: b"TGCA".to_vec(), qual: b"IIII".to_vec()}
-    ///     ]
-    /// );
-    /// # }
-    /// ```
     pub fn into_records(self) -> RecordsIntoIter<R, S> {
         RecordsIntoIter { rdr: self }
     }
@@ -475,6 +503,39 @@ impl<R, S> Reader<R, S>
     /// If an error was returned before, seeking to that position will return the same error.
     /// The same is not always true with `None`. If there is no newline character at the end of the
     /// file, the last record will be returned instead of `None`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate seq_io;
+    /// # fn main() {
+    /// use seq_io::fastq::{Reader,Position,OwnedRecord};
+    /// use std::io::Cursor;
+    ///
+    /// let fastq = b"@id1
+    /// ACGT
+    /// +
+    /// IIII
+    /// @id2
+    /// TGCA
+    /// +
+    /// IIII";
+    ///
+    /// let mut cursor = Cursor::new(&fastq[..]);
+    /// let mut reader = Reader::new(cursor);
+    ///
+    /// // read the first record and get its position
+    /// let record1 = reader.next().unwrap().unwrap().to_owned_record();
+    /// let pos1 = reader.position().to_owned();
+    ///
+    /// // read the second record
+    /// reader.next().unwrap().unwrap();
+    ///
+    /// // now seek to position of first record
+    /// reader.seek(&pos1);
+    /// assert_eq!(reader.next().unwrap().unwrap().to_owned_record(), record1);
+    /// # }
+    /// ```
     pub fn seek(&mut self, pos: &Position) -> Result<(), Error> {
         self.finished = false;
         let diff = pos.byte as i64 - self.position.byte as i64;
@@ -701,12 +762,13 @@ impl BufferPosition {
 }
 
 
+/// FASTQ record trait implemented by both `RefRecord` and `OwnedRecord`
 pub trait Record {
     /// Return the header line of the record as byte slice
     fn head(&self) -> &[u8];
-    /// Return the FASTA sequence as byte slice
+    /// Return the FASTQ sequence as byte slice
     fn seq(&self) -> &[u8];
-    /// Return the FASTA qualities as byte slice
+    /// Return the FASTQ qualities as byte slice
     fn qual(&self) -> &[u8];
 
     fn id_bytes(&self) -> &[u8] {

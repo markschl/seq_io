@@ -14,7 +14,7 @@
 /// use seq_io::fasta::{Reader,Record};
 /// use std::io::stdin;
 ///
-/// pub struct Max1G;
+/// struct Max1G;
 ///
 /// // This BufStrategy limits the buffer size to 1 GB
 /// impl BufStrategy for Max1G {
@@ -26,7 +26,8 @@
 ///     }
 /// }
 ///
-/// let mut reader = Reader::with_cap_and_strategy(stdin(), 68 * 1024, Max1G);
+/// let mut reader = Reader::with_cap_and_strategy(stdin(), 1 << 16, Max1G);
+///
 /// while let Some(record) = reader.next() {
 ///     println!("{}", record.unwrap().id().unwrap());
 /// }
