@@ -933,9 +933,10 @@ pub fn write_wrap_seq_iter<'a, W, S>(writer: &mut W, seq: S, wrap: usize)
                 break;
             }
             // chunk longer than line -> break
-            writer.write_all(&chunk[..remaining])?;
+            let (line, rest) = chunk.split_at(remaining);
+            chunk = rest;
+            writer.write_all(line)?;
             writer.write_all(b"\n")?;
-            chunk = &chunk[remaining..];
             n_line = 0;
         }
     }
