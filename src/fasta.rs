@@ -324,6 +324,73 @@ impl<R, S> Reader<R, S>
         }
         Some(&self.position)
     }
+
+    /// Returns a borrowed iterator over all FASTA records. The records
+    /// are owned (`OwnedRecord`), this is therefore slower than using
+    /// the `Reader::next()`, but makes sense if an owned copy is required.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate seq_io;
+    /// # fn main() {
+    /// use seq_io::fasta::{Reader,OwnedRecord};
+    ///
+    /// let fasta = b">id1
+    /// ACGT
+    /// >id2
+    /// TGCA";
+    ///
+    /// let mut reader = Reader::new(&fasta[..]);
+    ///
+    /// let records: Result<Vec<_>, _> = reader
+    ///     .records()
+    ///     .collect();
+    ///
+    /// assert_eq!(records.unwrap(),
+    ///     vec![
+    ///         OwnedRecord {head: b"id1".to_vec(), seq: b"ACGT".to_vec()},
+    ///         OwnedRecord {head: b"id2".to_vec(), seq: b"TGCA".to_vec()}
+    ///     ]
+    /// );
+    /// # }
+    /// ```
+    pub fn records(&mut self) -> RecordsIter<R, S> {
+        RecordsIter { rdr: self }
+    }
+
+    /// Returns an iterator over all FASTA records like `Reader::records()`,
+    /// but with the difference that it owns the underlying reader.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate seq_io;
+    /// # fn main() {
+    /// use seq_io::fasta::{Reader,OwnedRecord};
+    ///
+    /// let fasta = b">id1
+    /// ACGT
+    /// >id2
+    /// TGCA";
+    ///
+    /// let mut reader = Reader::new(&fasta[..]);
+    ///
+    /// let records: Result<Vec<_>, _> = reader
+    ///     .into_records()
+    ///     .collect();
+    ///
+    /// assert_eq!(records.unwrap(),
+    ///     vec![
+    ///         OwnedRecord {head: b"id1".to_vec(), seq: b"ACGT".to_vec()},
+    ///         OwnedRecord {head: b"id2".to_vec(), seq: b"TGCA".to_vec()}
+    ///     ]
+    /// );
+    /// # }
+    /// ```
+    pub fn into_records(self) -> RecordsIntoIter<R, S> {
+        RecordsIntoIter { rdr: self }
+    }
 }
 
 impl<R, S> Reader<R, S>
@@ -355,6 +422,44 @@ impl<R, S> Reader<R, S>
         Ok(())
     }
 }
+
+
+
+/// Borrowed iterator of `OwnedRecord`
+pub struct RecordsIter<'a, R, S = DefaultBufStrategy>
+    where S: 'a,
+          R: io::Read + 'a
+{
+    rdr: &'a mut Reader<R, S>
+}
+
+impl<'a, R, S> Iterator for RecordsIter<'a, R, S>
+    where S: BufStrategy + 'a,
+          R: io::Read + 'a
+{
+    type Item = Result<OwnedRecord, Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
+    }
+}
+
+
+/// Iterator of `OwnedRecord` that owns the underlying reader
+pub struct RecordsIntoIter<R: io::Read, S = DefaultBufStrategy> {
+    rdr: Reader<R, S>
+}
+
+impl<R, S> Iterator for RecordsIntoIter<R, S>
+    where S: BufStrategy,
+          R: io::Read
+{
+    type Item = Result<OwnedRecord, Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
+    }
+}
+
+
 
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
