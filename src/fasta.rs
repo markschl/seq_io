@@ -76,7 +76,7 @@ impl<R, S> Reader<R, S>
     }
 
     #[inline]
-    pub fn proceed(&mut self) -> Option<Result<(), Error>> {
+    fn proceed(&mut self) -> Option<Result<(), Error>> {
 
         if self.finished || ! self.initialized() && ! try_opt!(self.init()) {
             return None;

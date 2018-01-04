@@ -196,7 +196,7 @@ fn test_fastq_seek() {
         let pos0 = reader.position().clone();
         let rec1 = reader.next().unwrap().unwrap().to_owned_record();
         let pos1 = reader.position().clone();
-        reader.proceed().unwrap().unwrap();
+        reader.next().unwrap().unwrap();
         let rec3 = reader.next().unwrap().unwrap().to_owned_record();
         let pos3 = reader.position().clone();
 
@@ -209,12 +209,12 @@ fn test_fastq_seek() {
 
         reader.seek(&pos0).unwrap();
         assert_eq!(reader.next().unwrap().unwrap().id_bytes(), rec1.id_bytes());
-        reader.proceed().unwrap().unwrap();
+        reader.next().unwrap().unwrap();
         assert_eq!(reader.next().unwrap().unwrap().id_bytes(), rec3.id_bytes());
 
         reader.seek(&pos1).unwrap();
         assert_eq!(reader.next().unwrap().unwrap().id_bytes(), rec1.id_bytes());
-        reader.proceed().unwrap().unwrap();
+        reader.next().unwrap().unwrap();
         assert_eq!(reader.next().unwrap().unwrap().id_bytes(), rec3.id_bytes());
 
         reader.seek(&pos3).unwrap();
@@ -233,7 +233,7 @@ fn test_fastq_seek_err() {
         let mut reader = Reader::with_capacity(io::Cursor::new(&b"@s1\nA\n+\n~\n@s2\nA\n~\n"[..]), cap);
 
         let pos0 = reader.position().clone();
-        reader.proceed().unwrap().unwrap();
+        reader.next().unwrap().unwrap();
         assert_matches!(reader.next().unwrap(), Err(Error::InvalidSep {
             found: b'~', pos: ErrorPosition { line: 7, id: Some(_) }
         }));
@@ -257,7 +257,7 @@ fn test_fastq_seek_none() {
         let mut reader = Reader::with_capacity(io::Cursor::new(&b"@s1\nA\n+\n~\n"[..]), cap);
 
         let pos0 = reader.position().clone();
-        reader.proceed().unwrap().unwrap();
+        reader.next().unwrap().unwrap();
         assert!(reader.next().is_none());
 
         let end_pos = reader.position().clone();
