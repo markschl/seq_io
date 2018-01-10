@@ -1,0 +1,7 @@
+dist: trusty
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+script: ci/script.sh
