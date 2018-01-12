@@ -28,7 +28,6 @@ pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
     position: Position,
     search_pos: usize,
     finished: bool,
-    //prev_records: u64,
     buf_strategy: S,
 }
 
@@ -55,7 +54,8 @@ impl<R, S> Reader<R, S>
     where R: io::Read,
           S: BufStrategy
 {
-
+    /// Creates a new reader with a given buffer capacity and growth strategy. See
+    /// [See here](trait.BufStrategy.html) for an example.
     #[inline]
     pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
@@ -71,7 +71,6 @@ impl<R, S> Reader<R, S>
             position: Position::new(0, 0),
             search_pos: 0,
             finished: false,
-            //prev_records: 0,
             buf_strategy: buf_strategy,
         }
     }

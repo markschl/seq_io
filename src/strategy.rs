@@ -3,6 +3,35 @@
 /// Returns the number of additional bytes given the
 /// current size. Returning None instead will indicate
 /// that the buffer has grown too big.
+/// Creates a new reader with a given buffer capacity and growth strategy
+///
+/// # Example
+///
+/// ```no_run
+/// # extern crate seq_io;
+/// # fn main() {
+/// use seq_io::BufStrategy;
+/// use seq_io::fasta::{Reader,Record};
+/// use std::io::stdin;
+///
+/// pub struct Max1G;
+///
+/// // This BufStrategy limits the buffer size to 1 GB
+/// impl BufStrategy for Max1G {
+///     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
+///         if current_size > 1 << 30 {
+///             return None
+///         }
+///         Some(current_size * 2)
+///     }
+/// }
+///
+/// let mut reader = Reader::with_cap_and_strategy(stdin(), 68 * 1024, Max1G);
+/// while let Some(record) = reader.next() {
+///     println!("{}", record.unwrap().id().unwrap());
+/// }
+/// # }
+/// ```
 pub trait BufStrategy {
     fn grow_to(&mut self, current_size: usize) -> Option<usize>;
 }

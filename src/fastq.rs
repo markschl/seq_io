@@ -65,8 +65,9 @@ impl<R, S> Reader<R, S>
     where R: io::Read,
           S: BufStrategy
 {
-
-    /// Creates a reader given buffer size (cap) and growth strategy
+    /// Creates a new reader with a given buffer capacity and growth strategy. See
+    /// [See here](trait.BufStrategy.html) for an example using the FASTA reader, but otherwise
+    /// equivalent.
     pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
         Reader {
