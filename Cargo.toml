@@ -1,6 +1,6 @@
 [package]
 name = "seq_io"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["<markschl19@gmail.com>"]
 description = "Fast FASTA and FASTQ readers"
 license = "MIT"
