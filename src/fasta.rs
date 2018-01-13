@@ -731,12 +731,18 @@ impl<'a> RefRecord<'a> {
         }
     }
 
+    /// Returns the number of sequence lines
+    #[inline]
+    pub fn num_seq_lines(&self) -> usize {
+        self.buf_pos.seq_pos.len() - 1
+    }
+
     /// Returns the full sequence. If the sequence consists of a single line,
     /// then the sequence will be borrowed from the underlying buffer
     /// (equivalent to calling `RefRecord::seq()`). If there are multiple
     /// lines, an owned copy will be created (equivalent to `RefRecord::owned_seq()`).
     pub fn full_seq(&self) -> Cow<[u8]> {
-        if self.buf_pos.seq_pos.len() == 2 {
+        if self.num_seq_lines() == 1 {
             // only one line
             self.seq().into()
         } else {

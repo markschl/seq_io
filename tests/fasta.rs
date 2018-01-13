@@ -84,6 +84,15 @@ fn test_fasta_reader() {
 }
 
 #[test]
+fn test_fasta_seq_lines() {
+    let mut reader = Reader::new(&b">id\nAT\nGC\n"[..]);
+    let rec = reader.next().unwrap().unwrap();
+    let lines: Vec<_> = rec.seq_lines().collect();
+    assert_eq!(rec.num_seq_lines(), 2);
+    assert_eq!(lines, vec![b"AT", b"GC"]);
+}
+
+#[test]
 fn test_fasta_full_seq() {
     use std::borrow::Cow;
     let mut reader = Reader::new(&b">id\nATGC\n"[..]);
