@@ -1,6 +1,6 @@
 [package]
 name = "seq_io"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["<markschl19@gmail.com>"]
 description = "Fast FASTA and FASTQ readers"
 license = "MIT"
@@ -21,10 +21,10 @@ serde = "1.0"
 serde_derive = "1.0"
 
 [dev-dependencies]
-bio = "0.15"
+bio = "0.17"
 fastq = "0.5"
 matches = "0.1"
-lazy_static = "0.2"
+lazy_static = "1.0"
 
 [profile.bench]
 lto = true
