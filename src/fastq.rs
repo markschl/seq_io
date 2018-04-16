@@ -852,7 +852,6 @@ impl<'a> RefRecord<'a> {
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        #[inline]
         let data = &self.buffer[self.buf_pos.pos.0 .. self.buf_pos.pos.1];
         writer.write_all(data)?;
         writer.write_all(b"\n")
