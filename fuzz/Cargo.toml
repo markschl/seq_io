@@ -1,0 +1,29 @@
+
+[package]
+name = "seq_io-fuzz"
+version = "0.0.1"
+authors = ["Automatically generated"]
+publish = false
+
+[dependencies]
+criterion = "*"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies.seq_io]
+path = ".."
+[dependencies.libfuzzer-sys]
+git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_target_1"
+path = "fuzz_targets/fuzz_target_1.rs"
+
+[[bin]]
+name = "single_thread"
+path = "fuzz_targets/single_thread.rs"
