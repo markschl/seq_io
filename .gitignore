@@ -1,6 +1,6 @@
 
 /_other/
-/target/
+target
 Cargo.lock
 **/*.rs.bk
 
