@@ -21,9 +21,9 @@ git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
 members = ["."]
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "fasta"
+path = "fuzz_targets/fasta.rs"
 
 [[bin]]
-name = "single_thread"
-path = "fuzz_targets/single_thread.rs"
+name = "fastq"
+path = "fuzz_targets/fastq.rs"

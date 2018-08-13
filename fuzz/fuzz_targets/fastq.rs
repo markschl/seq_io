@@ -9,7 +9,7 @@ use seq_io::fastq::{Reader, Record};
 
 fuzz_target!(|data: &[u8]| {
     let reader = Cursor::new(data);
-    let mut reader = Reader::new(reader);
+    let mut reader = Reader::with_capacity(reader, 3);
     let mut count: usize = 0;
 
     while let Some(result) = reader.next() {
