@@ -318,7 +318,7 @@ impl<R, S> Reader<R, S>
     #[inline(never)]
     fn get_error_pos(&self, offset: u64, parse_id: bool) -> ErrorPosition {
         let id =
-            if parse_id {
+            if parse_id && self.buf_pos.seq - self.buf_pos.pos.0 > 1 {
                 let id = self.buf_pos
                     .head(self.get_buf())
                     .split(|b| *b == b' ')
