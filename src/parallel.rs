@@ -177,7 +177,9 @@ where R: Reader,
         });
 
         for _ in 0..queue_len  {
-            empty_send.send(dataset_init()?).unwrap();
+            if let Err(_) = empty_send.send(dataset_init()?) {
+                break;
+            }
         }
 
         let mut rsets = ParallelRecordsets {
