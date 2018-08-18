@@ -47,7 +47,7 @@ impl BufStrategy for DoubleUntil8M {
         Some(if current_size < 1 << 23 {
             current_size * 2
         } else {
-            current_size + 1 << 23
+            current_size + (1 << 23)
         })
     }
 }

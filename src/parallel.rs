@@ -178,7 +178,7 @@ where
         });
 
         for _ in 0..queue_len {
-            if let Err(_) = empty_send.send(dataset_init()?) {
+            if empty_send.send(dataset_init()?).is_err() {
                 break;
             }
         }
@@ -214,7 +214,7 @@ where
     E: Send,
     O: Send,
 {
-    pub fn next<'b>(&'b mut self) -> Option<Result<(&'b mut R, O), E>> {
+    pub fn next(&mut self) -> Option<Result<(&mut R, O), E>> {
         self.done_recv.recv().unwrap().map(move |result| {
             match result {
                 Ok((r, o)) => {
@@ -295,7 +295,7 @@ macro_rules! parallel_record_impl {
             W: Send + Sync + Fn($record, &mut D, &mut S),
             F: FnMut($record, &mut D, &mut S) -> Option<Out>,
         {
-            let res = $crate::parallel::read_parallel_init::<_, E, _, _, _, _, Es, _, _, _>(
+            $crate::parallel::read_parallel_init::<_, E, _, _, _, _, Es, _, _, _>(
                 n_threads,
                 queue_len,
                 || reader_init().map($crate::parallel::ReusableReader::<$rdr, (Vec<D>, S)>::new),
@@ -325,10 +325,9 @@ macro_rules! parallel_record_impl {
                     }
                     Ok(None)
                 },
-            )?;
-            res
+            )?
         }
-    };
+    }
 }
 
 parallel_record_impl!(

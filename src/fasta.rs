@@ -130,7 +130,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
-    pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, Error>> {
+    pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         self.proceed().map(|r| {
             r.map(move |_| RefRecord {
                 buffer: self.get_buf(),
@@ -154,10 +154,8 @@ where
             if !try_opt!(self.search()) {
                 return Some(Ok(()));
             }
-        } else {
-            if !try_opt!(self.next_complete()) {
-                return None;
-            }
+        } else if !try_opt!(self.next_complete()) {
+            return None;
         };
 
         // copy buffer AFTER call to next_complete (initialization of buffer is done there)
@@ -166,7 +164,7 @@ where
 
         // Update records that are already in the positions vector
         let mut n = 0;
-        for pos in rset.positions.iter_mut() {
+        for pos in &mut rset.positions {
             n += 1;
             pos.update(&self.buf_pos);
 
@@ -613,7 +611,7 @@ struct BufferPosition {
 impl BufferPosition {
     #[inline]
     fn is_new(&self) -> bool {
-        self.seq_pos.len() == 0
+        self.seq_pos.is_empty()
     }
 
     #[inline]
@@ -754,7 +752,7 @@ impl<'a> RefRecord<'a> {
         for segment in self.seq_lines() {
             seq.extend(segment);
         }
-        return seq;
+        seq
     }
 
     /// Creates an owned copy of the record.
@@ -882,7 +880,7 @@ pub fn write_to<W>(writer: &mut W, head: &[u8], seq: &[u8]) -> io::Result<()>
 where
     W: io::Write,
 {
-    write_head(writer, head.as_ref())?;
+    write_head(writer, head)?;
     write_seq(writer, seq)
 }
 

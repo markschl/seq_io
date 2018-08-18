@@ -136,7 +136,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
-    pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, Error>> {
+    pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         self.proceed().map(|r| {
             r.map(move |_| RefRecord {
                 buffer: self.get_buf(),
@@ -157,7 +157,7 @@ where
 
     #[inline]
     fn initialized(&self) -> bool {
-        self.get_buf().len() != 0
+        !self.get_buf().is_empty()
     }
 
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
@@ -175,10 +175,8 @@ where
             if !try_opt!(self.find()) {
                 return Some(Ok(()));
             }
-        } else {
-            if !try_opt!(self.next_complete()) {
-                return None;
-            }
+        } else if !try_opt!(self.next_complete()) {
+            return None;
         };
 
         rset.buffer.clear();
@@ -356,7 +354,7 @@ where
                 }
 
                 let rest = &self.get_buf()[self.buf_pos.pos.0..];
-                if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).len() == 0) {
+                if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).is_empty()) {
                     // allow up to 3 newlines after last record (more will cause an Unexpected error)
                     return Ok(false);
                 }
