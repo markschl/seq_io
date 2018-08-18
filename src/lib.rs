@@ -74,7 +74,6 @@ extern crate memchr;
 extern crate serde_derive;
 extern crate serde;
 
-
 use std::error;
 use std::fmt;
 use std::io;
@@ -83,32 +82,27 @@ pub use strategy::*;
 
 mod strategy;
 
-
 macro_rules! try_opt {
     ($expr: expr) => {
         match $expr {
             Ok(item) => item,
-            Err(e) => return Some(Err(::std::convert::From::from(e)))
+            Err(e) => return Some(Err(::std::convert::From::from(e))),
         }
-     };
+    };
 }
-
 
 macro_rules! unwrap_or {
     ($expr:expr, $or:block) => {
         match $expr {
             Some(item) => item,
-            None => $or
+            None => $or,
         }
-     };
+    };
 }
 
-
-pub mod parallel;
 pub mod fasta;
 pub mod fastq;
-
-
+pub mod parallel;
 
 /// used by more than one module
 
@@ -116,9 +110,10 @@ pub mod fastq;
 struct ReadAlways;
 
 impl buf_redux::strategy::ReadStrategy for ReadAlways {
-    fn should_read(&self, _: &buf_redux::Buffer) -> bool { true }
+    fn should_read(&self, _: &buf_redux::Buffer) -> bool {
+        true
+    }
 }
-
 
 /// Remove a final '\r' from a byte slice
 #[inline]
@@ -130,13 +125,13 @@ fn trim_cr(line: &[u8]) -> &[u8] {
     }
 }
 
-
 /// Makes sure the buffer is full after this call (unless EOF reached)
 /// code adapted from `io::Read::read_exact`
 fn fill_buf<R, Rs, Ms>(reader: &mut buf_redux::BufReader<R, Rs, Ms>) -> io::Result<usize>
-    where R: io::Read,
-          Rs: buf_redux::strategy::ReadStrategy,
-          Ms: buf_redux::strategy::MoveStrategy
+where
+    R: io::Read,
+    Rs: buf_redux::strategy::ReadStrategy,
+    Ms: buf_redux::strategy::MoveStrategy,
 {
     let mut num_read = reader.get_buf().len();
     while num_read < reader.capacity() {

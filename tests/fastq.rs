@@ -1,14 +1,12 @@
-
 extern crate seq_io;
 #[macro_use]
 extern crate matches;
 #[macro_use]
 extern crate lazy_static;
 
+use seq_io::fastq::*;
 use std::io;
 use std::str::Utf8Error;
-use seq_io::fastq::*;
-
 
 const FASTQ: &[u8] = b"@id desc
 ATGC
@@ -21,16 +19,24 @@ ATGC
 ";
 
 type ExpectedRecord = (
-        Result<&'static str, Utf8Error>,
-        Option<Result<&'static str, Utf8Error>>,
-        &'static [u8], &'static [u8; 4], &'static [u8; 4]
-    );
+    Result<&'static str, Utf8Error>,
+    Option<Result<&'static str, Utf8Error>>,
+    &'static [u8],
+    &'static [u8; 4],
+    &'static [u8; 4],
+);
 
 lazy_static! {
     static ref EXPECTED: [ExpectedRecord; 2] = [
-            (Ok("id"), Some(Ok("desc")), &b"id desc"[..], b"ATGC", b"~~~~"),
-            (Ok("id2"), None, &b"id2"[..], b"ATGC", b"~~~~"),
-        ];
+        (
+            Ok("id"),
+            Some(Ok("desc")),
+            &b"id desc"[..],
+            b"ATGC",
+            b"~~~~"
+        ),
+        (Ok("id2"), None, &b"id2"[..], b"ATGC", b"~~~~"),
+    ];
 }
 
 #[test]
@@ -63,16 +69,18 @@ fn test_fastq_reader() {
     }
 }
 
-
 #[test]
 fn test_fastq_invalid_start() {
     let mut reader = Reader::new(&b"@id1\nA\n+\n~\nid\nATGC\n+\n~~~~"[..]);
     reader.next().unwrap().unwrap();
     let rec = reader.next().unwrap();
-    assert_matches!(rec, Err(Error::InvalidStart {
-        found: b'i',
-        pos: ErrorPosition { line: 5, id: None }
-    }));
+    assert_matches!(
+        rec,
+        Err(Error::InvalidStart {
+            found: b'i',
+            pos: ErrorPosition { line: 5, id: None }
+        })
+    );
 }
 
 #[test]
@@ -80,7 +88,10 @@ fn test_fastq_invalid_start() {
 fn test_fastq_truncated() {
     let mut reader = Reader::new(&b"@id\nATGC\n+"[..]);
     let rec = reader.next().unwrap();
-    let p = ErrorPosition { line: 3, id: Some("id".to_string()) };
+    let p = ErrorPosition {
+        line: 3,
+        id: Some("id".to_string()),
+    };
     assert_matches!(rec, Err(Error::UnexpectedEnd { pos: p }));
 }
 
@@ -89,12 +100,18 @@ fn test_fastq_truncated() {
 fn test_fastq_unequal() {
     let mut reader = Reader::new(&b"@id\nATGC\n+\n~~"[..]);
     let rec = reader.next().unwrap();
-    let p = ErrorPosition { line: 1, id: Some("id".to_string()) };
-    assert_matches!(rec, Err(Error::UnequalLengths {
-        seq: 4,
-        qual: 2,
-        pos: p
-    }));
+    let p = ErrorPosition {
+        line: 1,
+        id: Some("id".to_string()),
+    };
+    assert_matches!(
+        rec,
+        Err(Error::UnequalLengths {
+            seq: 4,
+            qual: 2,
+            pos: p
+        })
+    );
 }
 
 #[test]
@@ -102,11 +119,17 @@ fn test_fastq_unequal() {
 fn test_fastq_no_sep() {
     let mut reader = Reader::new(&b"@id\nATGC\n~~~~\n"[..]);
     let rec = reader.next().unwrap();
-    let p = ErrorPosition { line: 3, id: Some("id".to_string()) };
-    assert_matches!(rec, Err(Error::InvalidSep {
-        found: b'~',
-        pos: p
-    }));
+    let p = ErrorPosition {
+        line: 3,
+        id: Some("id".to_string()),
+    };
+    assert_matches!(
+        rec,
+        Err(Error::InvalidSep {
+            found: b'~',
+            pos: p
+        })
+    );
 }
 
 #[test]
@@ -139,7 +162,6 @@ fn test_fastq_no_newline_end() {
 
 #[test]
 fn test_fastq_recset() {
-
     for cap in 3..400 {
         let mut reader = Reader::with_capacity(FASTQ, cap);
         let mut rsets = vec![];
@@ -151,7 +173,6 @@ fn test_fastq_recset() {
             } else {
                 break;
             }
-
         }
         let mut rset_iter = rsets.iter().flat_map(|r| r.into_iter());
 
@@ -170,14 +191,19 @@ fn test_fastq_recset() {
 
 #[test]
 fn test_fastq_parallel() {
-
     for cap in 3..400 {
         let par_reader = Reader::with_capacity(FASTQ, cap);
         let mut reader = Reader::new(FASTQ);
 
-        seq_io::parallel::parallel_fastq(par_reader, 1, 2,
-            |_, out| { *out = (); },
-            |rec, _| { // runs in main thread
+        seq_io::parallel::parallel_fastq(
+            par_reader,
+            1,
+            2,
+            |_, out| {
+                *out = ();
+            },
+            |rec, _| {
+                // runs in main thread
                 let r0 = reader.next().unwrap().unwrap();
                 assert_eq!(rec.id(), r0.id());
                 assert_eq!(rec.desc(), r0.desc());
@@ -185,15 +211,18 @@ fn test_fastq_parallel() {
                 assert_eq!(rec.seq(), r0.seq());
                 assert_eq!(rec.qual(), r0.qual());
                 None::<()>
-        }).unwrap();
+            },
+        ).unwrap();
     }
 }
-
 
 #[test]
 fn test_fastq_seek() {
     for cap in 3..31 {
-        let mut reader = Reader::with_capacity(io::Cursor::new(b"@s1\nA\n+\n~\n@s2\nA\n+\n~\n@s3\nA\n+\n~\n"), cap);
+        let mut reader = Reader::with_capacity(
+            io::Cursor::new(b"@s1\nA\n+\n~\n@s2\nA\n+\n~\n@s3\nA\n+\n~\n"),
+            cap,
+        );
         let pos0 = reader.position().clone();
         let rec1 = reader.next().unwrap().unwrap().to_owned_record();
         let pos1 = reader.position().clone();
@@ -231,13 +260,22 @@ fn test_fastq_seek() {
 #[test]
 fn test_fastq_seek_err() {
     for cap in 3..20 {
-        let mut reader = Reader::with_capacity(io::Cursor::new(&b"@s1\nA\n+\n~\n@s2\nA\n~\n"[..]), cap);
+        let mut reader =
+            Reader::with_capacity(io::Cursor::new(&b"@s1\nA\n+\n~\n@s2\nA\n~\n"[..]), cap);
 
         let pos0 = reader.position().clone();
         reader.next().unwrap().unwrap();
-        assert_matches!(reader.next().unwrap(), Err(Error::InvalidSep {
-            found: b'~', pos: ErrorPosition { line: 7, id: Some(_) }
-        }));
+        assert_matches!(
+            reader.next().unwrap(),
+            Err(Error::InvalidSep {
+                found: b'~',
+                pos:
+                    ErrorPosition {
+                        line: 7,
+                        id: Some(_),
+                    },
+            })
+        );
 
         let err_pos = reader.position().clone();
         assert!(reader.next().is_none());
@@ -246,9 +284,17 @@ fn test_fastq_seek_err() {
         assert_matches!(reader.next(), Some(Ok(_)));
 
         reader.seek(&err_pos).unwrap();
-        assert_matches!(reader.next().unwrap(), Err(Error::InvalidSep {
-            found: b'~', pos: ErrorPosition { line: 7, id: Some(_) }
-        }));
+        assert_matches!(
+            reader.next().unwrap(),
+            Err(Error::InvalidSep {
+                found: b'~',
+                pos:
+                    ErrorPosition {
+                        line: 7,
+                        id: Some(_),
+                    },
+            })
+        );
     }
 }
 
@@ -267,7 +313,6 @@ fn test_fastq_seek_none() {
         assert!(reader.next().is_none());
     }
 }
-
 
 // FASTQ writing
 

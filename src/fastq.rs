@@ -1,20 +1,19 @@
 //! Efficient FASTQ reading and writing
 //!
 
-use std::io::{self,BufRead,Seek};
-use std::fs::File;
-use std::path::Path;
 use memchr::memchr;
-use std::slice;
-use std::iter;
 use std::char;
-use std::str::{self,Utf8Error};
+use std::fs::File;
+use std::io::{self, BufRead, Seek};
+use std::iter;
+use std::path::Path;
+use std::slice;
+use std::str::{self, Utf8Error};
 
 use buf_redux;
 
-use std::error::Error as StdError;
 use super::*;
-
+use std::error::Error as StdError;
 
 type DefaultBufStrategy = DoubleUntil8M;
 
@@ -25,9 +24,8 @@ enum SearchPos {
     HEAD,
     SEQ,
     SEP,
-    QUAL
+    QUAL,
 }
-
 
 /// FASTQ parser.
 pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
@@ -39,9 +37,9 @@ pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
     buf_strategy: S,
 }
 
-
 impl<R> Reader<R, DefaultBufStrategy>
-    where R: io::Read
+where
+    R: io::Read,
 {
     /// Creates a new reader with the default buffer size of 68 KB
     ///
@@ -82,10 +80,10 @@ impl Reader<File, DefaultBufStrategy> {
     }
 }
 
-
 impl<R, S> Reader<R, S>
-    where R: io::Read,
-          S: BufStrategy
+where
+    R: io::Read,
+    S: BufStrategy,
 {
     /// Creates a new reader with a given buffer capacity and growth strategy.
     /// [See here](../trait.BufStrategy.html) for an example using the FASTA reader, but otherwise
@@ -96,7 +94,8 @@ impl<R, S> Reader<R, S>
             buffer: buf_redux::BufReader::with_cap_and_strategies(
                 reader,
                 cap,
-                ReadAlways, buf_redux::strategy::NeverMove
+                ReadAlways,
+                buf_redux::strategy::NeverMove,
             ),
             buf_pos: BufferPosition::default(),
             search_pos: SearchPos::HEAD,
@@ -107,16 +106,15 @@ impl<R, S> Reader<R, S>
     }
 
     fn proceed(&mut self) -> Option<Result<(), Error>> {
-
-        if self.finished || ! self.initialized() && ! try_opt!(self.init()) {
+        if self.finished || !self.initialized() && !try_opt!(self.init()) {
             return None;
         }
 
-        if ! self.buf_pos.is_new() {
+        if !self.buf_pos.is_new() {
             self.next_pos();
         }
 
-        if ! try_opt!(self.find()) && ! try_opt!(self.next_complete()) {
+        if !try_opt!(self.find()) && !try_opt!(self.next_complete()) {
             return None;
         }
 
@@ -139,9 +137,12 @@ impl<R, S> Reader<R, S>
     /// }
     /// ```
     pub fn next<'a>(&'a mut self) -> Option<Result<RefRecord<'a>, Error>> {
-        self.proceed().map(|r| r.map(
-            move |_| RefRecord { buffer: self.get_buf(), buf_pos: &self.buf_pos }
-        ))
+        self.proceed().map(|r| {
+            r.map(move |_| RefRecord {
+                buffer: self.get_buf(),
+                buf_pos: &self.buf_pos,
+            })
+        })
     }
 
     #[inline(never)]
@@ -163,20 +164,19 @@ impl<R, S> Reader<R, S>
     /// buffer are just copied over to the record set and the positions of all records are found.
     /// Old data will be erased. Returns `None` if the input reached its end.
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
-
         if self.finished {
             return None;
         }
 
-        if  ! self.initialized() {
-            if ! try_opt!(self.init()) {
+        if !self.initialized() {
+            if !try_opt!(self.init()) {
                 return None;
             }
-            if ! try_opt!(self.find()) {
+            if !try_opt!(self.find()) {
                 return Some(Ok(()));
             }
         } else {
-            if ! try_opt!(self.next_complete()) {
+            if !try_opt!(self.next_complete()) {
                 return None;
             }
         };
@@ -189,8 +189,8 @@ impl<R, S> Reader<R, S>
 
         loop {
             self.next_pos();
-            if ! try_opt!(self.find()) {
-                return Some(Ok(()))
+            if !try_opt!(self.find()) {
+                return Some(Ok(()));
             }
             rset.buf_positions.push(self.buf_pos.clone());
         }
@@ -215,7 +215,6 @@ impl<R, S> Reader<R, S>
     // search_start >= self.buf_pos.start.
     // Updates the position.
     fn find(&mut self) -> Result<bool, Error> {
-
         self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
             self.search_pos = SearchPos::HEAD;
             return Ok(false);
@@ -245,7 +244,6 @@ impl<R, S> Reader<R, S>
     // re-searching positions that were already found.
     // The resulting position may still be incomplete (-> false).
     fn find_incomplete(&mut self) -> Result<bool, Error> {
-
         if self.search_pos == SearchPos::HEAD {
             self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
                 self.search_pos = SearchPos::HEAD;
@@ -282,14 +280,14 @@ impl<R, S> Reader<R, S>
     }
 
     // should only be called on a complete BufferPosition
-    #[inline(always)]  // has performance impact and would not be inlined otherwise
+    #[inline(always)] // has performance impact and would not be inlined otherwise
     fn validate(&mut self) -> Result<(), Error> {
         let start_byte = self.get_buf()[self.buf_pos.pos.0];
         if start_byte != b'@' {
             self.finished = true;
             return Err(Error::InvalidStart {
                 found: start_byte,
-                pos: self.get_error_pos(0, false)
+                pos: self.get_error_pos(0, false),
             });
         }
 
@@ -298,7 +296,7 @@ impl<R, S> Reader<R, S>
             self.finished = true;
             return Err(Error::InvalidSep {
                 found: sep_byte,
-                pos: self.get_error_pos(2, true)
+                pos: self.get_error_pos(2, true),
             });
         }
 
@@ -309,7 +307,7 @@ impl<R, S> Reader<R, S>
             return Err(Error::UnequalLengths {
                 seq: self.buf_pos.seq(self.get_buf()).len(),
                 qual: self.buf_pos.qual(self.get_buf()).len(),
-                pos: self.get_error_pos(0, true)
+                pos: self.get_error_pos(0, true),
             });
         }
         Ok(())
@@ -317,26 +315,26 @@ impl<R, S> Reader<R, S>
 
     #[inline(never)]
     fn get_error_pos(&self, offset: u64, parse_id: bool) -> ErrorPosition {
-        let id =
-            if parse_id && self.buf_pos.seq - self.buf_pos.pos.0 > 1 {
-                let id = self.buf_pos
-                    .head(self.get_buf())
-                    .split(|b| *b == b' ')
-                    .next()
-                    .unwrap();
-                Some(String::from_utf8_lossy(id).into())
-            } else {
-                None
-            };
+        let id = if parse_id && self.buf_pos.seq - self.buf_pos.pos.0 > 1 {
+            let id = self
+                .buf_pos
+                .head(self.get_buf())
+                .split(|b| *b == b' ')
+                .next()
+                .unwrap();
+            Some(String::from_utf8_lossy(id).into())
+        } else {
+            None
+        };
         ErrorPosition {
             line: self.position.line + offset,
-            id: id
+            id: id,
         }
     }
 
     #[inline]
     fn find_line(&self, search_start: usize) -> Option<usize> {
-        memchr(b'\n', &self.get_buf()[search_start.. ]).map(|pos| search_start + pos + 1)
+        memchr(b'\n', &self.get_buf()[search_start..]).map(|pos| search_start + pos + 1)
     }
 
     // To be called when the end of the buffer is reached and `next_pos` does not find
@@ -345,7 +343,6 @@ impl<R, S> Reader<R, S>
     // After calling this function, the position will therefore always be 'complete'.
     #[inline(never)]
     fn next_complete(&mut self) -> Result<bool, Error> {
-
         loop {
             let bufsize = self.get_buf().len();
             if bufsize < self.buffer.capacity() {
@@ -359,15 +356,15 @@ impl<R, S> Reader<R, S>
                 }
 
                 let rest = &self.get_buf()[self.buf_pos.pos.0..];
-                if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).len() == 0)  {
+                if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).len() == 0) {
                     // allow up to 3 newlines after last record (more will cause an Unexpected error)
                     return Ok(false);
                 }
 
                 return Err(Error::UnexpectedEnd {
-                    pos: self.get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD)
+                    pos: self
+                        .get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
                 });
-
             } else if self.buf_pos.pos.0 == 0 {
                 // first record already incomplete -> buffer too small
                 self.grow()?;
@@ -492,10 +489,10 @@ impl<R, S> Reader<R, S>
     }
 }
 
-
 impl<R, S> Reader<R, S>
-    where R: io::Read + Seek,
-          S: BufStrategy
+where
+    R: io::Read + Seek,
+    S: BufStrategy,
 {
     /// Seeks to a specified position.
     /// Keep the underyling buffer if the seek position is found within it, otherwise it has to be
@@ -554,41 +551,41 @@ impl<R, S> Reader<R, S>
     }
 }
 
-
 /// Borrowed iterator of `OwnedRecord`
 pub struct RecordsIter<'a, R, S = DefaultBufStrategy>
-    where S: 'a,
-          R: io::Read + 'a
+where
+    S: 'a,
+    R: io::Read + 'a,
 {
-    rdr: &'a mut Reader<R, S>
+    rdr: &'a mut Reader<R, S>,
 }
 
 impl<'a, R, S> Iterator for RecordsIter<'a, R, S>
-    where S: BufStrategy + 'a,
-          R: io::Read + 'a
+where
+    S: BufStrategy + 'a,
+    R: io::Read + 'a,
 {
     type Item = Result<OwnedRecord, Error>;
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
 }
-
 
 /// Iterator of `OwnedRecord` that owns the underlying reader
 pub struct RecordsIntoIter<R: io::Read, S = DefaultBufStrategy> {
-    rdr: Reader<R, S>
+    rdr: Reader<R, S>,
 }
 
 impl<R, S> Iterator for RecordsIntoIter<R, S>
-    where S: BufStrategy,
-          R: io::Read
+where
+    S: BufStrategy,
+    R: io::Read,
 {
     type Item = Result<OwnedRecord, Error>;
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
@@ -598,7 +595,10 @@ pub struct Position {
 
 impl Position {
     pub fn new(line: u64, byte: u64) -> Position {
-        Position { line: line, byte: byte }
+        Position {
+            line: line,
+            byte: byte,
+        }
     }
 
     /// Line number (starting with 1)
@@ -611,7 +611,6 @@ impl Position {
         self.byte
     }
 }
-
 
 #[derive(Debug)]
 pub enum Error {
@@ -650,7 +649,6 @@ pub enum Error {
     BufferLimit,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ErrorPosition {
     /// Line number where the error occurred (starting with 1)
@@ -658,7 +656,6 @@ pub struct ErrorPosition {
     /// ID of record if available
     pub id: Option<String>,
 }
-
 
 impl fmt::Display for ErrorPosition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -673,24 +670,27 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => e.fmt(f),
-            Error::UnequalLengths { seq, qual, ref pos } => write!(f,
+            Error::UnequalLengths { seq, qual, ref pos } => write!(
+                f,
                 "FASTQ parse error: sequence length is {}, but quality length is {} ({}).",
                 seq, qual, pos
             ),
-            Error::InvalidStart { found, ref pos } => write!(f,
+            Error::InvalidStart { found, ref pos } => write!(
+                f,
                 "FASTQ parse error: expected '@' at record start but found '{}' ({}).",
-                (found as char).escape_default(), pos
+                (found as char).escape_default(),
+                pos
             ),
-            Error::InvalidSep { found, ref pos } => write!(f,
+            Error::InvalidSep { found, ref pos } => write!(
+                f,
                 "FASTQ parse error: Expected '+' separator but found '{}' ({}).",
-                (found as char).escape_default(), pos
+                (found as char).escape_default(),
+                pos
             ),
-            Error::UnexpectedEnd { ref pos } => write!(f,
-                "FASTQ parse error: unexpected end of input ({}).", pos
-            ),
-            Error::BufferLimit => write!(f,
-                "FASTQ parse error: Buffer limit reached."
-            ),
+            Error::UnexpectedEnd { ref pos } => {
+                write!(f, "FASTQ parse error: unexpected end of input ({}).", pos)
+            }
+            Error::BufferLimit => write!(f, "FASTQ parse error: Buffer limit reached."),
         }
     }
 }
@@ -705,10 +705,10 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
-            Error::UnequalLengths {..} => "sequence and quality lengths are different",
-            Error::InvalidStart {..} => "invalid record start",
-            Error::InvalidSep {..} => "invalid record separator",
-            Error::UnexpectedEnd {..} => "unexpected end of input",
+            Error::UnequalLengths { .. } => "sequence and quality lengths are different",
+            Error::InvalidStart { .. } => "invalid record start",
+            Error::InvalidSep { .. } => "invalid record separator",
+            Error::UnexpectedEnd { .. } => "unexpected end of input",
             Error::BufferLimit => "buffer limit reached",
         }
     }
@@ -716,11 +716,10 @@ impl StdError for Error {
     fn cause(&self) -> Option<&StdError> {
         match *self {
             Error::Io(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
-
 
 /// Represents the position of a record within a buffer
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -733,7 +732,6 @@ struct BufferPosition {
 }
 
 impl BufferPosition {
-
     #[inline]
     fn is_new(&self) -> bool {
         self.pos.1 == 0
@@ -747,20 +745,19 @@ impl BufferPosition {
 
     #[inline]
     fn head<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.pos.0 + 1 .. self.seq - 1])
+        trim_cr(&buffer[self.pos.0 + 1..self.seq - 1])
     }
 
     #[inline]
     fn seq<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.seq .. self.sep - 1])
+        trim_cr(&buffer[self.seq..self.sep - 1])
     }
 
     #[inline]
     fn qual<'a>(&'a self, buffer: &'a [u8]) -> &'a [u8] {
-        trim_cr(&buffer[self.qual .. self.pos.1])
+        trim_cr(&buffer[self.qual..self.pos.1])
     }
 }
-
 
 /// FASTQ record trait implemented by both `RefRecord` and `OwnedRecord`
 pub trait Record {
@@ -810,7 +807,6 @@ pub trait Record {
     }
 }
 
-
 /// A FASTQ record that borrows data from a buffer
 #[derive(Debug, Clone)]
 pub struct RefRecord<'a> {
@@ -818,9 +814,7 @@ pub struct RefRecord<'a> {
     buf_pos: &'a BufferPosition,
 }
 
-
 impl<'a> Record for RefRecord<'a> {
-
     #[inline]
     fn head(&self) -> &[u8] {
         self.buf_pos.head(self.buffer)
@@ -837,7 +831,6 @@ impl<'a> Record for RefRecord<'a> {
     }
 }
 
-
 impl<'a> RefRecord<'a> {
     #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
@@ -852,12 +845,11 @@ impl<'a> RefRecord<'a> {
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
     pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        let data = &self.buffer[self.buf_pos.pos.0 .. self.buf_pos.pos.1];
+        let data = &self.buffer[self.buf_pos.pos.0..self.buf_pos.pos.1];
         writer.write_all(data)?;
         writer.write_all(b"\n")
     }
 }
-
 
 /// A FASTQ record that ownes its data (requires allocations)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -867,16 +859,20 @@ pub struct OwnedRecord {
     pub qual: Vec<u8>,
 }
 
-
 impl Record for OwnedRecord {
     #[inline]
-    fn head(&self) -> &[u8] { &self.head }
+    fn head(&self) -> &[u8] {
+        &self.head
+    }
     #[inline]
-    fn seq(&self) -> &[u8]  { &self.seq  }
+    fn seq(&self) -> &[u8] {
+        &self.seq
+    }
     #[inline]
-    fn qual(&self) -> &[u8] { &self.qual }
+    fn qual(&self) -> &[u8] {
+        &self.qual
+    }
 }
-
 
 /// Set of FASTQ records that owns it's buffer
 /// and knows the positions of each record.
@@ -898,40 +894,38 @@ impl Default for RecordSet {
 impl<'a> iter::IntoIterator for &'a RecordSet {
     type Item = RefRecord<'a>;
     type IntoIter = RecordSetIter<'a>;
-     fn into_iter(self) -> Self::IntoIter {
-         RecordSetIter {
-             buffer: &self.buffer,
-             pos: self.buf_positions.iter(),
-         }
-     }
+    fn into_iter(self) -> Self::IntoIter {
+        RecordSetIter {
+            buffer: &self.buffer,
+            pos: self.buf_positions.iter(),
+        }
+    }
 }
-
 
 pub struct RecordSetIter<'a> {
     buffer: &'a [u8],
-    pos: slice::Iter<'a, BufferPosition>
+    pos: slice::Iter<'a, BufferPosition>,
 }
 
 impl<'a> Iterator for RecordSetIter<'a> {
     type Item = RefRecord<'a>;
 
     fn next(&mut self) -> Option<RefRecord<'a>> {
-        self.pos.next().map(|p| {
-            RefRecord {
-                buffer: self.buffer,
-                buf_pos: p,
-            }
+        self.pos.next().map(|p| RefRecord {
+            buffer: self.buffer,
+            buf_pos: p,
         })
     }
 }
-
 
 /// Helper function for writing data (not necessarily stored in a `Record` instance)
 /// to the FASTQ format
 pub fn write_to<W: io::Write>(
     writer: &mut W,
-    head: &[u8], seq: &[u8], qual: &[u8]) -> io::Result<()>
-{
+    head: &[u8],
+    seq: &[u8],
+    qual: &[u8],
+) -> io::Result<()> {
     writer.write_all(b"@")?;
     writer.write_all(head)?;
     writer.write_all(b"\n")?;
@@ -942,15 +936,16 @@ pub fn write_to<W: io::Write>(
     Ok(())
 }
 
-
 /// Helper function for writing data (not necessarily stored in a `Record` instance)
 /// to the FASTQ format. The ID and description parts of the header are supplied separately
 /// instead of a whole header line
 pub fn write_parts<W: io::Write>(
     writer: &mut W,
-    id: &[u8], desc: Option<&[u8]>,
-    seq: &[u8], qual: &[u8]) -> io::Result<()>
-{
+    id: &[u8],
+    desc: Option<&[u8]>,
+    seq: &[u8],
+    qual: &[u8],
+) -> io::Result<()> {
     writer.write_all(b"@")?;
     writer.write_all(id)?;
     if let Some(d) = desc {

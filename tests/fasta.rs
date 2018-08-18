@@ -1,11 +1,9 @@
-
 extern crate seq_io;
 #[macro_use]
 extern crate matches;
 
-use std::io;
 use seq_io::fasta::*;
-
+use std::io;
 
 const FASTA: &[&[u8]; 11] = &[
     b">id desc",
@@ -54,8 +52,7 @@ fn test_fasta_reader() {
                     // concatenated sequence
                     FASTA[start..end].concat().to_vec(),
                 )
-            })
-            .collect();
+            }).collect();
 
         // try different initial capacities to test
         // buffer growing feature
@@ -101,14 +98,20 @@ fn test_fasta_full_seq() {
 
     let mut reader = Reader::new(&b">id\nAT\nGC\n"[..]);
     let rec = reader.next().unwrap().unwrap();
-    assert_eq!(rec.full_seq().into_owned(),  b"ATGC".to_owned());
+    assert_eq!(rec.full_seq().into_owned(), b"ATGC".to_owned());
 }
 
 #[test]
 fn test_fasta_invalid_start() {
     let mut reader = Reader::new(&b"\r\nid\nATGC\n"[..]);
     let rec = reader.next().unwrap();
-    assert_matches!(rec, Err(Error::InvalidStart { line: 2, found: b'i' }));
+    assert_matches!(
+        rec,
+        Err(Error::InvalidStart {
+            line: 2,
+            found: b'i'
+        })
+    );
 }
 
 #[test]
@@ -193,19 +196,25 @@ fn test_fasta_parallel() {
         let par_reader = Reader::with_capacity(fa, cap);
         let mut reader = Reader::new(fa);
 
-        seq_io::parallel::parallel_fasta(par_reader, 1, 2,
-            |_, out| { *out = (); },
-            |rec, _| { // runs in main thread
+        seq_io::parallel::parallel_fasta(
+            par_reader,
+            1,
+            2,
+            |_, out| {
+                *out = ();
+            },
+            |rec, _| {
+                // runs in main thread
                 let r0 = reader.next().unwrap().unwrap();
                 assert_eq!(rec.id(), r0.id());
                 assert_eq!(rec.desc(), r0.desc());
                 assert_eq!(rec.head(), r0.head());
                 assert_eq!(rec.seq(), r0.seq());
                 None::<()>
-        }).unwrap();
+            },
+        ).unwrap();
     }
 }
-
 
 #[test]
 fn test_fasta_seek() {
@@ -237,7 +246,6 @@ fn test_fasta_seek() {
         assert!(reader.next().is_none());
     }
 }
-
 
 // FASTA writing
 

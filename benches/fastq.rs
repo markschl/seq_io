@@ -1,10 +1,10 @@
 #![feature(test)]
 #![allow(non_snake_case, unused_variables)]
 
-extern crate test;
-extern crate seq_io;
-extern crate fastq;
 extern crate bio;
+extern crate fastq;
+extern crate seq_io;
+extern crate test;
 #[macro_use]
 extern crate lazy_static;
 
@@ -12,11 +12,15 @@ use std::io::Cursor;
 use std::iter::repeat;
 use test::Bencher;
 
-
 /// generates 'nrecords' FASTQ records with given properties
-fn gen_fastq(nrecords: usize, id_len: usize, desc_len: usize,
-             seq_len: usize, sep_ids: bool, cr: bool) -> Vec<u8> {
-
+fn gen_fastq(
+    nrecords: usize,
+    id_len: usize,
+    desc_len: usize,
+    seq_len: usize,
+    sep_ids: bool,
+    cr: bool,
+) -> Vec<u8> {
     let newline = if cr { b"\r\n".to_vec() } else { b"\n".to_vec() };
     let mut rec: Vec<u8> = vec![];
     rec.push(b'@');
@@ -43,7 +47,6 @@ fn with_seqlen(nrecords: usize, seq_len: usize, sep_ids: bool, cr: bool) -> Vec<
     gen_fastq(nrecords, 20, 50, seq_len, sep_ids, cr)
 }
 
-
 /// number of records for all benchmarks
 const N: usize = 100_000;
 
@@ -63,7 +66,7 @@ macro_rules! bench {
                 $code
             });
         }
-     };
+    };
 }
 
 macro_rules! bench_static500 {
@@ -77,7 +80,7 @@ macro_rules! bench_static500 {
                 $code
             });
         }
-     };
+    };
 }
 
 macro_rules! fastq {
@@ -89,7 +92,7 @@ macro_rules! fastq {
                 $code
             }
         });
-     };
+    };
 }
 
 macro_rules! fastq_rs {
@@ -113,9 +116,8 @@ macro_rules! bio {
                 $code
             }
         });
-     };
+    };
 }
-
 
 fastq!(fastq_iter_200____seqio, 200, false, r, {});
 fastq!(fastq_iter_500____seqio, 500, false, r, {});
@@ -125,10 +127,9 @@ fastq_rs!(fastq_iter_200____fastqrs, 200, false, r, {});
 fastq_rs!(fastq_iter_500____fastqrs, 500, false, r, {});
 fastq_rs!(fastq_iter_1000____fastqrs, 1000, false, r, {});
 
-bio!(fastq_iter_200__owned__bio,  200,  false, r, {});
-bio!(fastq_iter_500__owned__bio,  500,  false, r, {});
+bio!(fastq_iter_200__owned__bio, 200, false, r, {});
+bio!(fastq_iter_500__owned__bio, 500, false, r, {});
 bio!(fastq_iter_1000__owned__bio, 1000, false, r, {});
-
 
 // bench!(fastq_iter_500__buf5k__seqio, 500, false, cursor, {
 //     let mut reader = seq_io::fastq::Reader::with_capacity(cursor, 5*1024);
@@ -142,34 +143,45 @@ bio!(fastq_iter_1000__owned__bio, 1000, false, r, {});
 //     reader.each(|_| {true}).unwrap();
 // });
 
-
-fastq!(fastq_iter_500__owned__seqio,  500,  false, r, {
+fastq!(fastq_iter_500__owned__seqio, 500, false, r, {
     let _ = r.to_owned_record();
 });
 
-fastq_rs!(fastq_iter_500__owned__fastqrs,  500,  false, r, {
+fastq_rs!(fastq_iter_500__owned__fastqrs, 500, false, r, {
     let _ = r.to_owned_record();
 });
-
 
 // parallel processing (just iterate)
 
 bench!(fastq_iter_500_recset__parallel_seqio, 500, false, cursor, {
     let reader = seq_io::fastq::Reader::new(cursor);
-    seq_io::parallel::read_parallel(reader, 2, 2, |rset| {
-        for _ in &*rset {}
-    }, |rsets| {
-        while let Some(result) = rsets.next() {
-            let (rset, _) = result.unwrap();
+    seq_io::parallel::read_parallel(
+        reader,
+        2,
+        2,
+        |rset| {
             for _ in &*rset {}
-        }
-    });
+        },
+        |rsets| {
+            while let Some(result) = rsets.next() {
+                let (rset, _) = result.unwrap();
+                for _ in &*rset {}
+            }
+        },
+    );
 });
 
-bench!(fastq_iter_500_records__parallel_seqio, 500, false, cursor, {
-    let reader = seq_io::fastq::Reader::new(cursor);
-    seq_io::parallel::parallel_fastq::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| {None}).unwrap();
-});
+bench!(
+    fastq_iter_500_records__parallel_seqio,
+    500,
+    false,
+    cursor,
+    {
+        let reader = seq_io::fastq::Reader::new(cursor);
+        seq_io::parallel::parallel_fastq::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| None)
+            .unwrap();
+    }
+);
 
 // bench_static500!(fastq_iter_500_static__parallel_seqio, cursor, {
 //     let reader = seq_io::fastq::Reader::new(cursor);
@@ -184,13 +196,13 @@ bench!(fastq_iter_500_records__parallel_seqio, 500, false, cursor, {
 // input needs static lifetime, but impact of using lazy_static is neglectable
 bench_static500!(fastq_iter_500_recset__parallel_fastqrs, cursor, {
     let parser = fastq::Parser::new(cursor);
-    let res: Vec<_> = parser.parallel_each(2, |rsets| {
-        for rset in rsets {
-            for _ in rset.iter() {}
-        }
-    }).unwrap();
+    let res: Vec<_> = parser
+        .parallel_each(2, |rsets| {
+            for rset in rsets {
+                for _ in rset.iter() {}
+            }
+        }).unwrap();
 });
-
 
 // iterate over record sets without parallelism
 

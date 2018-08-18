@@ -52,7 +52,6 @@ impl BufStrategy for DoubleUntil8M {
     }
 }
 
-
 /// Buffer size doubles until it reaches
 /// `double_size_limit` (in bytes). Above,
 /// it increases in steps of `double_size_limit`
