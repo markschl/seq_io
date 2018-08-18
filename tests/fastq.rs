@@ -10,7 +10,7 @@ use std::str::Utf8Error;
 use seq_io::fastq::*;
 
 
-const FASTQ: &'static [u8] = b"@id desc
+const FASTQ: &[u8] = b"@id desc
 ATGC
 +
 ~~~~
@@ -20,17 +20,18 @@ ATGC
 ~~~~
 ";
 
+type ExpectedRecord = (
+        Result<&'static str, Utf8Error>,
+        Option<Result<&'static str, Utf8Error>>,
+        &'static [u8], &'static [u8; 4], &'static [u8; 4]
+    );
+
 lazy_static! {
-    static ref EXPECTED: [(
-            Result<&'static str, Utf8Error>,
-            Option<Result<&'static str, Utf8Error>>,
-            &'static [u8], &'static [u8; 4], &'static [u8; 4]
-        ); 2] = [
+    static ref EXPECTED: [ExpectedRecord; 2] = [
             (Ok("id"), Some(Ok("desc")), &b"id desc"[..], b"ATGC", b"~~~~"),
             (Ok("id2"), None, &b"id2"[..], b"ATGC", b"~~~~"),
         ];
 }
-
 
 #[test]
 fn test_fastq_reader() {
@@ -43,7 +44,7 @@ fn test_fastq_reader() {
             let record = reader
                 .next()
                 .unwrap()
-                .expect(&format!("Error reading record at cap. {}", cap));
+                .unwrap_or_else(|_| panic!("Error reading record at cap. {}", cap));
 
             assert_eq!(record.id(), id, "ID mismatch at cap. {}", cap);
             assert_eq!(record.desc(), desc, "desc mismatch at cap. {}", cap);

@@ -7,7 +7,7 @@ use std::io;
 use seq_io::fasta::*;
 
 
-const FASTA: &'static [&'static [u8]; 11] = &[
+const FASTA: &[&[u8]; 11] = &[
     b">id desc",
     b"ACCGTAGGCT",
     b"CCGTAGGCTG",
@@ -43,7 +43,7 @@ fn test_fasta_reader() {
     let lterms: [&[u8]; 2] = [b"\n", b"\r\n"];
 
     // try different line endings
-    for t in lterms.into_iter() {
+    for t in &lterms {
         let fasta = concat_lines(FASTA, *t, false);
         let exp_seqs: Vec<_> = expected
             .iter()
@@ -66,7 +66,7 @@ fn test_fasta_reader() {
                 let record = reader
                     .next()
                     .unwrap()
-                    .expect(&format!("Error reading record at cap. {}", cap));
+                    .unwrap_or_else(|_| panic!("Error reading record at cap. {}", cap));
 
                 assert_eq!(record.id(), id);
                 assert_eq!(record.desc(), desc);
