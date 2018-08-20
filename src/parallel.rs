@@ -192,7 +192,7 @@ where
         let out = func(&mut rsets);
         ::std::mem::drop(rsets);
 
-        handle.join()?;
+        handle.join().unwrap()?;
         Ok(out)
     })
 }

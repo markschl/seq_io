@@ -16,7 +16,7 @@ exclude = [
 memchr = "2.0"
 buf_redux = "0.7"
 scoped_threadpool ="0.1"
-crossbeam = "0.3"
+crossbeam = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
 
