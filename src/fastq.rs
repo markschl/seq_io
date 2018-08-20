@@ -29,7 +29,7 @@ enum SearchPos {
 
 /// FASTQ parser.
 pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
-    buffer: buf_redux::BufReader<R, ReadAlways, buf_redux::strategy::NeverMove>,
+    buffer: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     search_pos: SearchPos,
     position: Position,
@@ -91,12 +91,7 @@ where
     pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
         Reader {
-            buffer: buf_redux::BufReader::with_cap_and_strategies(
-                reader,
-                cap,
-                ReadAlways,
-                buf_redux::strategy::NeverMove,
-            ),
+            buffer: buf_redux::BufReader::with_capacity(cap, reader),
             buf_pos: BufferPosition::default(),
             search_pos: SearchPos::HEAD,
             position: Position::new(1, 0),
@@ -196,7 +191,7 @@ where
 
     #[inline]
     fn get_buf(&self) -> &[u8] {
-        self.buffer.get_buf()
+        self.buffer.buffer()
     }
 
     // Sets starting points for next position
@@ -386,7 +381,7 @@ where
         let cap = self.buffer.capacity();
         let new_size = self.buf_strategy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
-        self.buffer.grow(additional);
+        self.buffer.reserve(additional);
         Ok(())
     }
 

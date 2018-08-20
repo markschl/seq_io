@@ -20,7 +20,7 @@ const BUFSIZE: usize = 68 * 1024;
 
 /// Parser for FASTA files.
 pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
-    buffer: buf_redux::BufReader<R, ReadAlways, buf_redux::strategy::NeverMove>,
+    buffer: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     position: Position,
     search_pos: usize,
@@ -81,12 +81,7 @@ where
     pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
         assert!(cap >= 3);
         Reader {
-            buffer: buf_redux::BufReader::with_cap_and_strategies(
-                reader,
-                cap,
-                ReadAlways,
-                buf_redux::strategy::NeverMove,
-            ),
+            buffer: buf_redux::BufReader::with_capacity(cap, reader),
             buf_pos: BufferPosition {
                 start: 0,
                 seq_pos: Vec::with_capacity(2),
@@ -199,7 +194,7 @@ where
 
     #[inline(always)]
     fn get_buf(&self) -> &[u8] {
-        self.buffer.get_buf()
+        self.buffer.buffer()
     }
 
     #[inline(always)]
@@ -260,6 +255,7 @@ where
         // nothing found
         if self.get_buf().len() < self.buffer.capacity() {
             // EOF reached, there will be no next record
+
             self.finished = true;
             self.buf_pos.seq_pos.push(self.search_pos);
             if self.buf_pos.seq_pos.len() == 1 {
@@ -269,6 +265,7 @@ where
             }
             return Ok(true);
         }
+
         Ok(false)
     }
 
@@ -277,7 +274,7 @@ where
     fn _search(&mut self) -> bool {
         let bufsize = self.get_buf().len();
 
-        for pos in Memchr::new(b'\n', &self.buffer.get_buf()[self.search_pos..]) {
+        for pos in Memchr::new(b'\n', &self.buffer.buffer()[self.search_pos .. ]) {
             let pos = self.search_pos + pos;
             let next_line_start = pos + 1;
 
@@ -307,6 +304,7 @@ where
     /// After calling this function, the position will therefore always be 'complete'.
     /// this function assumes that the buffer was fully searched
     fn next_complete(&mut self) -> Result<bool, Error> {
+
         loop {
             if self.buf_pos.start == 0 {
                 // first record -> buffer too small
@@ -330,7 +328,7 @@ where
         let cap = self.buffer.capacity();
         let new_size = self.buf_strategy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
-        self.buffer.grow(additional);
+        self.buffer.reserve(additional);
         Ok(())
     }
 

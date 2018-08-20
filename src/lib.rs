@@ -104,17 +104,6 @@ pub mod fasta;
 pub mod fastq;
 pub mod parallel;
 
-/// used by more than one module
-
-#[derive(Default, Debug)]
-struct ReadAlways;
-
-impl buf_redux::strategy::ReadStrategy for ReadAlways {
-    fn should_read(&self, _: &buf_redux::Buffer) -> bool {
-        true
-    }
-}
-
 /// Remove a final '\r' from a byte slice
 #[inline]
 fn trim_cr(line: &[u8]) -> &[u8] {
@@ -127,13 +116,10 @@ fn trim_cr(line: &[u8]) -> &[u8] {
 
 /// Makes sure the buffer is full after this call (unless EOF reached)
 /// code adapted from `io::Read::read_exact`
-fn fill_buf<R, Rs, Ms>(reader: &mut buf_redux::BufReader<R, Rs, Ms>) -> io::Result<usize>
-where
-    R: io::Read,
-    Rs: buf_redux::strategy::ReadStrategy,
-    Ms: buf_redux::strategy::MoveStrategy,
+fn fill_buf<R>(reader: &mut buf_redux::BufReader<R, buf_redux::policy::StdPolicy>) -> io::Result<usize>
+    where R: io::Read
 {
-    let mut num_read = reader.get_buf().len();
+    let mut num_read = reader.buffer().len();
     while num_read < reader.capacity() {
         match reader.read_into_buf() {
             Ok(0) => break,
