@@ -1,18 +1,17 @@
 #![allow(unused_variables)]
 
 extern crate bio;
-extern crate seq_io;
 extern crate rand;
+extern crate seq_io;
 #[macro_use]
 extern crate criterion;
 
-use std::iter::repeat;
-use rand::{IsaacRng, SeedableRng, Rng};
-use rand::distributions::Normal;
 use criterion::Criterion;
+use rand::distributions::Normal;
+use rand::{IsaacRng, Rng, SeedableRng};
+use std::iter::repeat;
 
 use seq_io::fasta;
-
 
 /// number of records for all benchmarks
 const N: usize = 10_000;
@@ -26,8 +25,7 @@ fn gen_fasta(
     seq_len: usize,
     break_seq: Option<usize>,
     cr: bool,
-) -> Vec<u8>
-{
+) -> Vec<u8> {
     let newline = if cr { b"\r\n".to_vec() } else { b"\n".to_vec() };
     let mut rec: Vec<u8> = vec![];
     rec.push(b'>');
@@ -39,24 +37,33 @@ fn gen_fasta(
     let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC);
     let mut rng = IsaacRng::from_seed([5; 32]);
 
-    rng.sample_iter(&norm).map(|slen| {
-        let slen = slen.round() as usize;
-        let mut r = rec.clone();
-        let seq_line = break_seq.unwrap_or(slen);
-        let rest = slen % seq_line;
-        for n in repeat(seq_line)
-            .take(slen / seq_line)
-            .chain(if rest > 0 {Some(rest)} else {None})
-        {
-            r.extend(repeat(b'A').take(n));
-            r.extend(&newline);
-        }
-        assert!(r.len() - rec.len() == slen + slen / seq_line * newline.len() + if slen % seq_line > 0 {newline.len()} else {0});
-        r
-    })
-    .take(nrecords)
-    .flat_map(|r| r)
-    .collect()
+    rng.sample_iter(&norm)
+        .map(|slen| {
+            let slen = slen.round() as usize;
+            let mut r = rec.clone();
+            let seq_line = break_seq.unwrap_or(slen);
+            let rest = slen % seq_line;
+            for n in repeat(seq_line).take(slen / seq_line).chain(if rest > 0 {
+                Some(rest)
+            } else {
+                None
+            }) {
+                r.extend(repeat(b'A').take(n));
+                r.extend(&newline);
+            }
+            assert!(
+                r.len() - rec.len() == slen + slen / seq_line * newline.len() + if slen % seq_line
+                    > 0
+                {
+                    newline.len()
+                } else {
+                    0
+                }
+            );
+            r
+        }).take(nrecords)
+        .flat_map(|r| r)
+        .collect()
 }
 
 /// generates 'nrecords' FASTA with fixed ID / description lengths (20 and 50), but configurable otherwise
@@ -64,15 +71,16 @@ fn with_seqlen(nrecords: usize, seq_len: usize, break_seq: Option<usize>, cr: bo
     gen_fasta(nrecords, 20, 50, seq_len, break_seq, cr)
 }
 
-
 macro_rules! bench {
     ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr, $data:ident, $code:block) => {
         let data = with_seqlen(N, $seqlen, $lbreak, false);
         let name = format!("{} {}", $name, data.len());
-        $c.bench_function(&name, move |b| b.iter(|| {
-            let $data = data.as_slice();
-            $code
-        }));
+        $c.bench_function(&name, move |b| {
+            b.iter(|| {
+                let $data = data.as_slice();
+                $code
+            })
+        });
     };
 }
 
@@ -85,7 +93,7 @@ macro_rules! fasta {
                 $code
             }
         });
-     };
+    };
 }
 
 macro_rules! fasta_owned {
@@ -95,7 +103,7 @@ macro_rules! fasta_owned {
                 let _ = rec.unwrap();
             }
         });
-     };
+    };
 }
 
 macro_rules! bio {
@@ -126,7 +134,9 @@ fn readers(c: &mut Criterion) {
     bench!(c, "fasta seqio 500 recordset,parallel", 500, None, data, {
         let reader = fasta::Reader::new(data);
         seq_io::parallel::read_parallel(
-            reader, 2, 2,
+            reader,
+            2,
+            2,
             |rset| {
                 for _ in &*rset {}
             },
@@ -165,7 +175,6 @@ fn readers(c: &mut Criterion) {
     });
 }
 
-
 // compare different buffer capacities
 
 macro_rules! bench_cap {
@@ -176,7 +185,7 @@ macro_rules! bench_cap {
                 let _ = r.unwrap();
             }
         });
-     };
+    };
 }
 
 fn readers_cap(c: &mut Criterion) {
@@ -194,12 +203,12 @@ fn readers_cap(c: &mut Criterion) {
     bench_cap!(c, "fasta seq_io_cap 1000 128ki", 1000, 1 << 17, N);
     bench_cap!(c, "fasta seq_io_cap 1000 256ki", 1000, 1 << 18, N);
 
-    bench_cap!(c, "fasta seq_io_cap 10000 8ki", 10000, 1 << 13, N/10);
-    bench_cap!(c, "fasta seq_io_cap 10000 16ki", 10000, 1 << 14, N/10);
-    bench_cap!(c, "fasta seq_io_cap 10000 32ki", 10000, 1 << 15, N/10);
-    bench_cap!(c, "fasta seq_io_cap 10000 64ki", 10000, 1 << 16, N/10);
-    bench_cap!(c, "fasta seq_io_cap 10000 128ki", 10000, 1 << 17, N/10);
-    bench_cap!(c, "fasta seq_io_cap 10000 256ki", 10000, 1 << 18, N/10);
+    bench_cap!(c, "fasta seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
+    bench_cap!(c, "fasta seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
+    bench_cap!(c, "fasta seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
+    bench_cap!(c, "fasta seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
+    bench_cap!(c, "fasta seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
+    bench_cap!(c, "fasta seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
 }
 
 criterion_group!(benches, readers, readers_cap);

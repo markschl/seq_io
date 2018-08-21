@@ -327,7 +327,7 @@ macro_rules! parallel_record_impl {
                 },
             )?
         }
-    }
+    };
 }
 
 parallel_record_impl!(

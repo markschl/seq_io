@@ -290,7 +290,7 @@ where
     fn _search(&mut self) -> bool {
         let bufsize = self.get_buf().len();
 
-        for pos in Memchr::new(b'\n', &self.buffer.buffer()[self.search_pos .. ]) {
+        for pos in Memchr::new(b'\n', &self.buffer.buffer()[self.search_pos..]) {
             let pos = self.search_pos + pos;
             let next_line_start = pos + 1;
 
@@ -320,7 +320,6 @@ where
     /// After calling this function, the position will therefore always be 'complete'.
     /// this function assumes that the buffer was fully searched
     fn next_complete(&mut self) -> Result<bool, Error> {
-
         loop {
             if self.buf_pos.start == 0 {
                 // first record -> buffer too small
