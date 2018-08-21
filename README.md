@@ -72,12 +72,10 @@ The [rust-bio](http://rust-bio.github.io/) readers are slower due
 to allocations, copying, and UTF-8 validity checks.
 
 All comparisons were run on a set of 100,000 auto-generated, synthetic sequences
-of uniform length (500 bp) loaded into memory. The parsers from this crate
-(*seqio*) are compared with [fastq-rs](https://github.com/aseyboldt/fastq-rs) (*fastqrs*)
+with lengths normally distributed around 500 bp and loaded into memory.
+The parsers from this crate (*seqio*) are compared with [fastq-rs](https://github.com/aseyboldt/fastq-rs) (*fast_qrs*)
 and [Rust-Bio](https://rust-bio.github.io/) (*bio*).
-The bars represent the throughput in GB/s, the error bars show the
-+/- deviation as inferred from the deviations provided by
-`cargo bench`, that is: (max\_time - min\_time) / 2 used per iteration.
+The bars represent the throughput in GB/s (+/- standard error of the mean).
 Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.13) using Rust 1.23 nightly
 
 **FASTA**
@@ -94,7 +92,7 @@ Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.13) using Rust
 * *owned*: An owned copy of each record is created for comparison with *Rust-Bio*,
   which does not provide zero copy parsing.
 * *multiline*: The FASTA sequence is split into 5 x 100 bp lines.
-* *recset*: Records are parsed into record sets using `read_record_set()` (involves some copying).
+* *recordset*: Records are parsed into record sets using `read_record_set()` (involves some copying).
 * *parallel*: Record sets are are sent to worker threads for parallel processing
   where they are being iterated over and then sent back to the main thread
   where there is another iteration over the records (the latter only in seq_io)
