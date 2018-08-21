@@ -184,8 +184,8 @@ where
         }
 
         let mut rsets = ParallelRecordsets {
-            empty_send: empty_send,
-            done_recv: done_recv,
+            empty_send,
+            done_recv,
             current_recordset: dataset_init()?,
         };
 

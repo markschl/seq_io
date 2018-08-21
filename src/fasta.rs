@@ -538,10 +538,7 @@ pub struct Position {
 
 impl Position {
     pub fn new(line: u64, byte: u64) -> Position {
-        Position {
-            line: line,
-            byte: byte,
-        }
+        Position { line, byte }
     }
 
     /// Line number (starting with 1)
