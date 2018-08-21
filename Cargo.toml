@@ -25,6 +25,16 @@ bio = "0.22"
 fastq = "0.6"
 matches = "0.1"
 lazy_static = "1.1"
+rand = "0.5"
+criterion = { version = "0.2", default_features = false }
 
 [profile.bench]
 lto = true
+
+[[bench]]
+name = "fasta"
+harness = false
+
+[[bench]]
+name = "fastq"
+harness = false

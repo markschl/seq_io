@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# sudo cpupower frequency-set -u 2.2G
+set -e
 
-mkdir -p bench_results
-scripts/bench.sh $@ > bench_results/bench.txt
+cargo bench
 
-Rscript scripts/bench_analysis.R bench_results/bench.txt
-
+Rscript scripts/bench_analysis.R target/criterion
