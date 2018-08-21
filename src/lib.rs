@@ -3,7 +3,7 @@
 //! lines. The sequence length of records in the FASTA/FASTQ files
 //! is not limited by the size of the buffer. Instead, the buffer will grow until
 //! the record fits, allowing parsers with a minimum amount of copying required.
-//! How it grows can be configured (see [`BufStrategy`](trait.BufStrategy.html)).
+//! How it grows can be configured (see [`BufPolicy`](trait.BufPolicy.html)).
 //!
 //! See also the documentation for the [FASTA Reader](fasta/struct.Reader.html) and the
 //! [FASTQ Reader](fastq/struct.Reader.html). The methods for writing are documented
@@ -78,9 +78,9 @@ use std::error;
 use std::fmt;
 use std::io;
 
-pub use strategy::*;
+pub use policy::*;
 
-mod strategy;
+mod policy;
 
 macro_rules! try_opt {
     ($expr: expr) => {

@@ -1,23 +1,23 @@
-/// Strategy that decides how a buffer should grow
+/// Policy that decides how a buffer should grow
 ///
 /// Returns the number of additional bytes given the
 /// current size. Returning None instead will indicate
 /// that the buffer has grown too big.
-/// Creates a new reader with a given buffer capacity and growth strategy
+/// Creates a new reader with a given buffer capacity and growth policy
 ///
 /// # Example
 ///
 /// ```no_run
 /// # extern crate seq_io;
 /// # fn main() {
-/// use seq_io::BufStrategy;
+/// use seq_io::BufPolicy;
 /// use seq_io::fasta::{Reader,Record};
 /// use std::io::stdin;
 ///
 /// struct Max1G;
 ///
-/// // This BufStrategy limits the buffer size to 1 GB
-/// impl BufStrategy for Max1G {
+/// // This policy limits the buffer size to 1 GB
+/// impl BufPolicy for Max1G {
 ///     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
 ///         if current_size > 1 << 30 {
 ///             return None
@@ -26,14 +26,14 @@
 ///     }
 /// }
 ///
-/// let mut reader = Reader::with_cap_and_strategy(stdin(), 1 << 16, Max1G);
+/// let mut reader = Reader::new(stdin()).set_policy(Max1G);
 ///
 /// while let Some(record) = reader.next() {
 ///     println!("{}", record.unwrap().id().unwrap());
 /// }
 /// # }
 /// ```
-pub trait BufStrategy {
+pub trait BufPolicy {
     fn grow_to(&mut self, current_size: usize) -> Option<usize>;
 }
 
@@ -42,7 +42,7 @@ pub trait BufStrategy {
 /// increase in steps of 8 MB
 pub struct DoubleUntil8M;
 
-impl BufStrategy for DoubleUntil8M {
+impl BufPolicy for DoubleUntil8M {
     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
         Some(if current_size < 1 << 23 {
             current_size * 2
@@ -52,12 +52,12 @@ impl BufStrategy for DoubleUntil8M {
     }
 }
 
-/// Buffer size doubles until it reaches
-/// `double_size_limit` (in bytes). Above,
-/// it increases in steps of `double_size_limit`
+/// Buffer size doubles until it reaches a given limit
+/// (in bytes). Above, it will increase linearly in
+/// steps of 'limit'.
 pub struct DoubleUntil(pub usize);
 
-impl BufStrategy for DoubleUntil {
+impl BufPolicy for DoubleUntil {
     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
         Some(if current_size < self.0 {
             current_size * 2

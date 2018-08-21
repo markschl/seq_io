@@ -14,25 +14,25 @@ use memchr::Memchr;
 
 use super::*;
 
-type DefaultBufStrategy = DoubleUntil8M;
+type DefaultPolicy = DoubleUntil8M;
 
-const BUFSIZE: usize = 68 * 1024;
+const BUFSIZE: usize = 64 * 1024;
 
 /// Parser for FASTA files.
-pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
+pub struct Reader<R: io::Read, P = DefaultPolicy> {
     buffer: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     position: Position,
     search_pos: usize,
     finished: bool,
-    buf_strategy: S,
+    buf_policy: P,
 }
 
-impl<R> Reader<R, DefaultBufStrategy>
+impl<R> Reader<R, DefaultPolicy>
 where
     R: io::Read,
 {
-    /// Creates a new reader with the default buffer size of 68 KB
+    /// Creates a new reader with the default buffer size of 64 KiB
     ///
     /// Example:
     ///
@@ -44,16 +44,30 @@ where
     /// let record = reader.next().unwrap().unwrap();
     /// assert_eq!(record.id(), Ok("id"))
     /// ```
+    #[inline]
     pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
-        Reader::with_cap_and_strategy(reader, BUFSIZE, DoubleUntil8M)
+        Reader::with_capacity(reader, BUFSIZE)
     }
 
-    pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DoubleUntil8M> {
-        Reader::with_cap_and_strategy(reader, capacity, DoubleUntil8M)
+    /// Creates a new reader with a given buffer capacity
+    #[inline]
+    pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DefaultPolicy> {
+        assert!(capacity >= 3);
+        Reader {
+            buffer: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_pos: BufferPosition {
+                start: 0,
+                seq_pos: Vec::with_capacity(2),
+            },
+            position: Position::new(0, 0),
+            search_pos: 0,
+            finished: false,
+            buf_policy: DoubleUntil8M,
+        }
     }
 }
 
-impl Reader<File, DefaultBufStrategy> {
+impl Reader<File, DefaultPolicy> {
     /// Creates a reader from a file path.
     ///
     /// Example:
@@ -65,32 +79,34 @@ impl Reader<File, DefaultBufStrategy> {
     ///
     /// // (... do something with the reader)
     /// ```
+    #[inline]
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
     }
 }
 
-impl<R, S> Reader<R, S>
+impl<R, P> Reader<R, P>
 where
     R: io::Read,
-    S: BufStrategy,
+    P: BufPolicy,
 {
-    /// Creates a new reader with a given buffer capacity and growth strategy.
-    /// [See here](../trait.BufStrategy.html) for an example.
+    /// Returns a reader with the given buffer policy applied
     #[inline]
-    pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
-        assert!(cap >= 3);
+    pub fn set_policy<T: BufPolicy>(self, policy: T) -> Reader<R, T> {
         Reader {
-            buffer: buf_redux::BufReader::with_capacity(cap, reader),
-            buf_pos: BufferPosition {
-                start: 0,
-                seq_pos: Vec::with_capacity(2),
-            },
-            position: Position::new(0, 0),
-            search_pos: 0,
-            finished: false,
-            buf_strategy: buf_strategy,
+            buffer: self.buffer,
+            buf_pos: self.buf_pos,
+            position: self.position,
+            search_pos: self.search_pos,
+            finished: self.finished,
+            buf_policy: policy,
         }
+    }
+
+    /// Returns the `BufPolicy` of the reader
+    #[inline]
+    pub fn policy(&self) -> &P {
+        &self.buf_policy
     }
 
     #[inline]
@@ -326,7 +342,7 @@ where
     // grow buffer
     fn grow(&mut self) -> Result<(), Error> {
         let cap = self.buffer.capacity();
-        let new_size = self.buf_strategy.grow_to(cap).ok_or(Error::BufferLimit)?;
+        let new_size = self.buf_policy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
         self.buffer.reserve(additional);
         Ok(())
@@ -407,21 +423,21 @@ where
     /// );
     /// # }
     /// ```
-    pub fn records(&mut self) -> RecordsIter<R, S> {
+    pub fn records(&mut self) -> RecordsIter<R, P> {
         RecordsIter { rdr: self }
     }
 
     /// Returns an iterator over all FASTA records like `Reader::records()`,
     /// but with the difference that it owns the underlying reader.
-    pub fn into_records(self) -> RecordsIntoIter<R, S> {
+    pub fn into_records(self) -> RecordsIntoIter<R, P> {
         RecordsIntoIter { rdr: self }
     }
 }
 
-impl<R, S> Reader<R, S>
+impl<R, P> Reader<R, P>
 where
     R: io::Read + Seek,
-    S: BufStrategy,
+    P: BufPolicy,
 {
     /// Seeks to a specified position.  Keeps the underyling buffer if the seek position is
     /// found within it, otherwise it has to be discarded.
@@ -480,17 +496,17 @@ where
 }
 
 /// Borrowed iterator of `OwnedRecord`
-pub struct RecordsIter<'a, R, S = DefaultBufStrategy>
+pub struct RecordsIter<'a, R, P = DefaultPolicy>
 where
-    S: 'a,
+    P: 'a,
     R: io::Read + 'a,
 {
-    rdr: &'a mut Reader<R, S>,
+    rdr: &'a mut Reader<R, P>,
 }
 
-impl<'a, R, S> Iterator for RecordsIter<'a, R, S>
+impl<'a, R, P> Iterator for RecordsIter<'a, R, P>
 where
-    S: BufStrategy + 'a,
+    P: BufPolicy + 'a,
     R: io::Read + 'a,
 {
     type Item = Result<OwnedRecord, Error>;
@@ -500,13 +516,13 @@ where
 }
 
 /// Iterator of `OwnedRecord` that owns the underlying reader
-pub struct RecordsIntoIter<R: io::Read, S = DefaultBufStrategy> {
-    rdr: Reader<R, S>,
+pub struct RecordsIntoIter<R: io::Read, P = DefaultPolicy> {
+    rdr: Reader<R, P>,
 }
 
-impl<R, S> Iterator for RecordsIntoIter<R, S>
+impl<R, P> Iterator for RecordsIntoIter<R, P>
 where
-    S: BufStrategy,
+    P: BufPolicy,
     R: io::Read,
 {
     type Item = Result<OwnedRecord, Error>;
@@ -556,7 +572,7 @@ pub enum Error {
         /// line number (1-based count)
         line: usize,
     },
-    /// Size limit of buffer was reached, which happens if `BufStrategy::new_size()` returned
+    /// Size limit of buffer was reached, which happens if `BufPolicy::new_size()` returned
     /// `None` (not the case by default).
     BufferLimit,
 }
@@ -826,7 +842,7 @@ impl Record for OwnedRecord {
     }
 }
 
-/// Set of FASTA records that owns it's buffer
+/// Set of FASTA records that owns it'P buffer
 /// and knows the positions of each record.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
@@ -962,10 +978,10 @@ where
 
 /// Writes the sequence line from an iterator (such as `SeqLines`)
 #[inline]
-pub fn write_seq_iter<'a, W, S>(writer: &mut W, seq: S) -> io::Result<()>
+pub fn write_seq_iter<'a, W, P>(writer: &mut W, seq: P) -> io::Result<()>
 where
     W: io::Write,
-    S: Iterator<Item = &'a [u8]>,
+    P: Iterator<Item = &'a [u8]>,
 {
     for subseq in seq {
         writer.write_all(subseq)?;
@@ -976,10 +992,10 @@ where
 /// Writes the sequence line from an iterator (such as `SeqLines`) and wraps the output
 /// to a maximum width specified by `wrap`.
 #[inline]
-pub fn write_wrap_seq_iter<'a, W, S>(writer: &mut W, seq: S, wrap: usize) -> io::Result<()>
+pub fn write_wrap_seq_iter<'a, W, P>(writer: &mut W, seq: P, wrap: usize) -> io::Result<()>
 where
     W: io::Write,
-    S: IntoIterator<Item = &'a [u8]>,
+    P: IntoIterator<Item = &'a [u8]>,
 {
     assert!(wrap > 0);
     let mut n_line = 0;

@@ -452,10 +452,10 @@ where
 
 use super::fasta;
 
-impl<R, S> Reader for fasta::Reader<R, S>
+impl<R, P> Reader for fasta::Reader<R, P>
 where
     R: io::Read,
-    S: super::strategy::BufStrategy + Send,
+    P: super::policy::BufPolicy + Send,
 {
     type DataSet = fasta::RecordSet;
     type Err = fasta::Error;
@@ -466,10 +466,10 @@ where
 
 use super::fastq;
 
-impl<R, S> Reader for fastq::Reader<R, S>
+impl<R, P> Reader for fastq::Reader<R, P>
 where
     R: io::Read,
-    S: super::strategy::BufStrategy + Send,
+    P: super::policy::BufPolicy + Send,
 {
     type DataSet = fastq::RecordSet;
     type Err = fastq::Error;

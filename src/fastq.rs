@@ -15,9 +15,9 @@ use buf_redux;
 use super::*;
 use std::error::Error as StdError;
 
-type DefaultBufStrategy = DoubleUntil8M;
+type DefaultBufPolicy = DoubleUntil8M;
 
-const BUFSIZE: usize = 68 * 1024;
+const BUFSIZE: usize = 64 * 1024;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 enum SearchPos {
@@ -28,25 +28,25 @@ enum SearchPos {
 }
 
 /// FASTQ parser.
-pub struct Reader<R: io::Read, S = DefaultBufStrategy> {
+pub struct Reader<R: io::Read, P = DefaultBufPolicy> {
     buffer: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     search_pos: SearchPos,
     position: Position,
     finished: bool,
-    buf_strategy: S,
+    buf_policy: P,
 }
 
-impl<R> Reader<R, DefaultBufStrategy>
+impl<R> Reader<R, DefaultBufPolicy>
 where
     R: io::Read,
 {
-    /// Creates a new reader with the default buffer size of 68 KB
+    /// Creates a new reader with the default buffer size of 64 KiB
     ///
     /// Example:
     ///
     /// ```
-    /// use seq_io::fastq::{Reader,Record};
+    /// use seq_io::fastq::{Reader, Record};
     /// let fastq = b"@id\nACGT\n+\nIIII";
     ///
     /// let mut reader = Reader::new(&fastq[..]);
@@ -54,16 +54,24 @@ where
     /// assert_eq!(record.id(), Ok("id"))
     /// ```
     pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
-        Reader::with_cap_and_strategy(reader, BUFSIZE, DoubleUntil8M)
+        Reader::with_capacity(reader, BUFSIZE)
     }
 
-    /// Creates a reader with the given buffer size
+    /// Creates a new reader with a given buffer capacity
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DoubleUntil8M> {
-        Reader::with_cap_and_strategy(reader, capacity, DoubleUntil8M)
+        assert!(capacity >= 3);
+        Reader {
+            buffer: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_pos: BufferPosition::default(),
+            search_pos: SearchPos::HEAD,
+            position: Position::new(1, 0),
+            finished: false,
+            buf_policy: DoubleUntil8M,
+        }
     }
 }
 
-impl Reader<File, DefaultBufStrategy> {
+impl Reader<File, DefaultBufPolicy> {
     /// Creates a reader from a file path.
     ///
     /// Example:
@@ -80,24 +88,28 @@ impl Reader<File, DefaultBufStrategy> {
     }
 }
 
-impl<R, S> Reader<R, S>
+impl<R, P> Reader<R, P>
 where
     R: io::Read,
-    S: BufStrategy,
+    P: BufPolicy,
 {
-    /// Creates a new reader with a given buffer capacity and growth strategy.
-    /// [See here](../trait.BufStrategy.html) for an example using the FASTA reader, but otherwise
-    /// equivalent.
-    pub fn with_cap_and_strategy(reader: R, cap: usize, buf_strategy: S) -> Reader<R, S> {
-        assert!(cap >= 3);
+    /// Returns a reader with the given buffer policy applied
+    #[inline]
+    pub fn set_policy<T: BufPolicy>(self, policy: T) -> Reader<R, T> {
         Reader {
-            buffer: buf_redux::BufReader::with_capacity(cap, reader),
-            buf_pos: BufferPosition::default(),
-            search_pos: SearchPos::HEAD,
-            position: Position::new(1, 0),
-            finished: false,
-            buf_strategy: buf_strategy,
+            buffer: self.buffer,
+            buf_pos: self.buf_pos,
+            position: self.position,
+            search_pos: self.search_pos,
+            finished: self.finished,
+            buf_policy: policy,
         }
+    }
+
+    /// Returns the `BufPolicy` of the reader
+    #[inline]
+    pub fn policy(&self) -> &P {
+        &self.buf_policy
     }
 
     fn proceed(&mut self) -> Option<Result<(), Error>> {
@@ -122,7 +134,7 @@ where
     /// Example:
     ///
     /// ```no_run
-    /// use seq_io::fastq::{Reader,Record};
+    /// use seq_io::fastq::{Reader, Record};
     ///
     /// let mut reader = Reader::from_path("seqs.fastq").unwrap();
     ///
@@ -376,10 +388,10 @@ where
         }
     }
 
-    // grow buffer based on strategy
+    // grow buffer based on policy
     fn grow(&mut self) -> Result<(), Error> {
         let cap = self.buffer.capacity();
-        let new_size = self.buf_strategy.grow_to(cap).ok_or(Error::BufferLimit)?;
+        let new_size = self.buf_policy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
         self.buffer.reserve(additional);
         Ok(())
@@ -411,7 +423,7 @@ where
     /// ```
     /// # extern crate seq_io;
     /// # fn main() {
-    /// use seq_io::fastq::{Reader,Position};
+    /// use seq_io::fastq::{Reader, Position};
     ///
     /// let fastq = b"@id1
     /// ACGT
@@ -446,7 +458,7 @@ where
     /// ```
     /// # extern crate seq_io;
     /// # fn main() {
-    /// use seq_io::fastq::{Reader,OwnedRecord};
+    /// use seq_io::fastq::{Reader, OwnedRecord};
     ///
     /// let fastq = b"@id1
     /// ACGT
@@ -471,21 +483,21 @@ where
     /// );
     /// # }
     /// ```
-    pub fn records(&mut self) -> RecordsIter<R, S> {
+    pub fn records(&mut self) -> RecordsIter<R, P> {
         RecordsIter { rdr: self }
     }
 
     /// Returns an iterator over all FASTQ records like `Reader::records()`,
     /// but with the difference that it owns the underlying reader.
-    pub fn into_records(self) -> RecordsIntoIter<R, S> {
+    pub fn into_records(self) -> RecordsIntoIter<R, P> {
         RecordsIntoIter { rdr: self }
     }
 }
 
-impl<R, S> Reader<R, S>
+impl<R, P> Reader<R, P>
 where
     R: io::Read + Seek,
-    S: BufStrategy,
+    P: BufPolicy,
 {
     /// Seeks to a specified position.
     /// Keep the underyling buffer if the seek position is found within it, otherwise it has to be
@@ -499,7 +511,7 @@ where
     /// ```
     /// # extern crate seq_io;
     /// # fn main() {
-    /// use seq_io::fastq::{Reader,Position,OwnedRecord};
+    /// use seq_io::fastq::{Reader, Position, OwnedRecord};
     /// use std::io::Cursor;
     ///
     /// let fastq = b"@id1
@@ -545,17 +557,17 @@ where
 }
 
 /// Borrowed iterator of `OwnedRecord`
-pub struct RecordsIter<'a, R, S = DefaultBufStrategy>
+pub struct RecordsIter<'a, R, P = DefaultBufPolicy>
 where
-    S: 'a,
+    P: 'a,
     R: io::Read + 'a,
 {
-    rdr: &'a mut Reader<R, S>,
+    rdr: &'a mut Reader<R, P>,
 }
 
-impl<'a, R, S> Iterator for RecordsIter<'a, R, S>
+impl<'a, R, P> Iterator for RecordsIter<'a, R, P>
 where
-    S: BufStrategy + 'a,
+    P: BufPolicy + 'a,
     R: io::Read + 'a,
 {
     type Item = Result<OwnedRecord, Error>;
@@ -565,13 +577,13 @@ where
 }
 
 /// Iterator of `OwnedRecord` that owns the underlying reader
-pub struct RecordsIntoIter<R: io::Read, S = DefaultBufStrategy> {
-    rdr: Reader<R, S>,
+pub struct RecordsIntoIter<R: io::Read, P = DefaultBufPolicy> {
+    rdr: Reader<R, P>,
 }
 
-impl<R, S> Iterator for RecordsIntoIter<R, S>
+impl<R, P> Iterator for RecordsIntoIter<R, P>
 where
-    S: BufStrategy,
+    P: BufPolicy,
     R: io::Read,
 {
     type Item = Result<OwnedRecord, Error>;
@@ -637,7 +649,7 @@ pub enum Error {
         /// Position within file.
         pos: ErrorPosition,
     },
-    /// Size limit of buffer was reached, which happens if `BufStrategy::new_size()` returned
+    /// Size limit of buffer was reached, which happens if `BufPolicy::new_size()` returned
     /// `None` (not the case by default).
     BufferLimit,
 }

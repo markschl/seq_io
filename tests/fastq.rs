@@ -70,6 +70,25 @@ fn test_fastq_reader() {
 }
 
 #[test]
+fn test_fastq_policy() {
+    struct Limited(usize);
+
+    impl seq_io::BufPolicy for Limited {
+        fn grow_to(&mut self, current_size: usize) -> Option<usize> {
+            if current_size > self.0 {
+                return None
+            }
+            Some(current_size * 2)
+        }
+    }
+
+    let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3)
+        .set_policy(Limited(5));
+    let res = reader.next().unwrap();
+    assert_matches!(res, Err(Error::BufferLimit));
+}
+
+#[test]
 fn test_fastq_invalid_start() {
     let mut reader = Reader::new(&b"@id1\nA\n+\n~\nid\nATGC\n+\n~~~~"[..]);
     reader.next().unwrap().unwrap();
