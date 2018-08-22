@@ -73,7 +73,7 @@ to allocations, copying, and UTF-8 validity checks.
 
 All comparisons were run on a set of 100,000 auto-generated, synthetic sequences
 with lengths normally distributed around 500 bp and loaded into memory.
-The parsers from this crate (*seqio*) are compared with [fastq-rs](https://github.com/aseyboldt/fastq-rs) (*fast_qrs*)
+The parsers from this crate (*seq_io*) are compared with [fastq-rs](https://github.com/aseyboldt/fastq-rs) (*fastq_rs*)
 and [Rust-Bio](https://rust-bio.github.io/) (*bio*).
 The bars represent the throughput in GB/s (+/- standard error of the mean).
 Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.13) using Rust 1.23 nightly

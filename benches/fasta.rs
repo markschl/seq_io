@@ -74,7 +74,7 @@ fn with_seqlen(nrecords: usize, seq_len: usize, break_seq: Option<usize>, cr: bo
 macro_rules! bench {
     ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr, $data:ident, $code:block) => {
         let data = with_seqlen(N, $seqlen, $lbreak, false);
-        let name = format!("{} {}", $name, data.len());
+        let name = format!("fasta {} {}", $name, data.len());
         $c.bench_function(&name, move |b| {
             b.iter(|| {
                 let $data = data.as_slice();
@@ -119,24 +119,28 @@ macro_rules! bio {
 }
 
 fn readers(c: &mut Criterion) {
-    fasta!(c, "fasta seq_io 200 ", 200, None, r, {});
-    fasta!(c, "fasta seq_io 500 ", 500, None, r, {});
-    fasta!(c, "fasta seq_io 500 multiline ", 500, Some(100), r, {});
-    fasta_owned!(c, "fasta seq_io 500 owned", 500, None);
-    fasta_owned!(c, "fasta seq_io 500 owned,multiline", 500, Some(100));
-    fasta!(c, "fasta seq_io 1000 ", 1000, None, r, {});
+    fasta!(c, "seq_io 200 ", 200, None, r, {});
+    fasta!(c, "seq_io 500 ", 500, None, r, {});
+    fasta!(c, "seq_io 500 multiline", 500, Some(100), r, {});
+    fasta_owned!(c, "seq_io 500 owned,iter", 500, None);
+    fasta_owned!(c, "seq_io 500 owned,iter,multiline", 500, Some(100));
+    fasta!(c, "seq_io 500 owned,multiline", 500, Some(100), r, {
+        let _ = r.to_owned_record();
+    });
+    fasta!(c, "seq_io 500 owned", 500, None, r, {
+        let _ = r.to_owned_record();
+    });
+    fasta!(c, "seq_io 1000 ", 1000, None, r, {});
 
-    bio!(c, "fasta bio 200 owned", 200, None, r, {});
-    bio!(c, "fasta bio 500 owned", 500, None, r, {});
-    bio!(c, "fasta bio 500 owned,multiline", 500, Some(100), r, {});
-    bio!(c, "fasta bio 1000 ", 1000, None, r, {});
+    bio!(c, "bio 200 owned", 200, None, r, {});
+    bio!(c, "bio 500 owned", 500, None, r, {});
+    bio!(c, "bio 500 owned,multiline", 500, Some(100), r, {});
+    bio!(c, "bio 1000 owned", 1000, None, r, {});
 
-    bench!(c, "fasta seqio 500 recordset,parallel", 500, None, data, {
+    bench!(c, "seq_io 500 recordset,parallel", 500, None, data, {
         let reader = fasta::Reader::new(data);
         seq_io::parallel::read_parallel(
-            reader,
-            2,
-            2,
+            reader, 2, 2,
             |rset| {
                 for _ in &*rset {}
             },
@@ -149,7 +153,7 @@ fn readers(c: &mut Criterion) {
         );
     });
 
-    bench!(c, "fasta seqio 500 records,parallel", 500, None, data, {
+    bench!(c, "seq_io 500 records,parallel", 500, None, data, {
         let reader = fasta::Reader::new(data);
         seq_io::parallel::parallel_fasta::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| None)
             .unwrap();
@@ -157,7 +161,7 @@ fn readers(c: &mut Criterion) {
 
     // read into record sets without parallelism
 
-    bench!(c, "fasta seqio 500 recordset", 500, None, data, {
+    bench!(c, "seq_io 500 recordset", 500, None, data, {
         let mut reader = fasta::Reader::new(data);
         let mut rset = fasta::RecordSet::default();
         while let Some(result) = reader.read_record_set(&mut rset) {
@@ -166,11 +170,11 @@ fn readers(c: &mut Criterion) {
         }
     });
 
-    fasta!(c, "fasta seqio 500 seq", 500, None, r, {
+    fasta!(c, "seq_io 500 seq", 500, None, r, {
         for _ in r.seq_lines() {}
     });
 
-    bio!(c, "fasta bio 500 seq", 500, None, r, {
+    bio!(c, "bio 500 seq,owned", 500, None, r, {
         let _ = r.seq();
     });
 }
@@ -189,26 +193,26 @@ macro_rules! bench_cap {
 }
 
 fn readers_cap(c: &mut Criterion) {
-    bench_cap!(c, "fasta seq_io_cap 200 8ki", 200, 1 << 13, N);
-    bench_cap!(c, "fasta seq_io_cap 200 16ki", 200, 1 << 14, N);
-    bench_cap!(c, "fasta seq_io_cap 200 32ki", 200, 1 << 15, N);
-    bench_cap!(c, "fasta seq_io_cap 200 64ki", 200, 1 << 16, N);
-    bench_cap!(c, "fasta seq_io_cap 200 128ki", 200, 1 << 17, N);
-    bench_cap!(c, "fasta seq_io_cap 200 256ki", 200, 1 << 18, N);
+    bench_cap!(c, "seq_io_cap 200 8ki", 200, 1 << 13, N);
+    bench_cap!(c, "seq_io_cap 200 16ki", 200, 1 << 14, N);
+    bench_cap!(c, "seq_io_cap 200 32ki", 200, 1 << 15, N);
+    bench_cap!(c, "seq_io_cap 200 64ki", 200, 1 << 16, N);
+    bench_cap!(c, "seq_io_cap 200 128ki", 200, 1 << 17, N);
+    bench_cap!(c, "seq_io_cap 200 256ki", 200, 1 << 18, N);
 
-    bench_cap!(c, "fasta seq_io_cap 1000 8ki", 1000, 1 << 13, N);
-    bench_cap!(c, "fasta seq_io_cap 1000 16ki", 1000, 1 << 14, N);
-    bench_cap!(c, "fasta seq_io_cap 1000 32ki", 1000, 1 << 15, N);
-    bench_cap!(c, "fasta seq_io_cap 1000 64ki", 1000, 1 << 16, N);
-    bench_cap!(c, "fasta seq_io_cap 1000 128ki", 1000, 1 << 17, N);
-    bench_cap!(c, "fasta seq_io_cap 1000 256ki", 1000, 1 << 18, N);
+    bench_cap!(c, "seq_io_cap 1000 8ki", 1000, 1 << 13, N);
+    bench_cap!(c, "seq_io_cap 1000 16ki", 1000, 1 << 14, N);
+    bench_cap!(c, "seq_io_cap 1000 32ki", 1000, 1 << 15, N);
+    bench_cap!(c, "seq_io_cap 1000 64ki", 1000, 1 << 16, N);
+    bench_cap!(c, "seq_io_cap 1000 128ki", 1000, 1 << 17, N);
+    bench_cap!(c, "seq_io_cap 1000 256ki", 1000, 1 << 18, N);
 
-    bench_cap!(c, "fasta seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
-    bench_cap!(c, "fasta seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
-    bench_cap!(c, "fasta seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
-    bench_cap!(c, "fasta seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
-    bench_cap!(c, "fasta seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
-    bench_cap!(c, "fasta seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
 }
 
 criterion_group!(benches, readers, readers_cap);

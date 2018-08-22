@@ -13,6 +13,7 @@ use criterion::Criterion;
 use rand::distributions::Normal;
 use rand::{IsaacRng, Rng, SeedableRng};
 use std::iter::repeat;
+use seq_io::fastq::Record;
 
 /// number of records for all benchmarks
 const N: usize = 10_000;
@@ -68,16 +69,22 @@ lazy_static! {
     static ref L500: Vec<u8> = { with_seqlen(N, 500, false, false) };
 }
 
-macro_rules! bench {
-    ($c:expr, $name:expr, $seqlen:expr, $data:ident, $code:block) => {
-        let data = with_seqlen(N, $seqlen, false, false);
-        let name = format!("{} {}", $name, data.len());
+macro_rules! bench_base {
+    ($c:expr, $name:expr, $input_data:expr, $data:ident, $code:block) => {
+        let name = format!("fastq {} {}", $name, $input_data.len());
         $c.bench_function(&name, move |b| {
             b.iter(|| {
-                let $data = data.as_slice();
+                let $data = $input_data.as_slice();
                 $code
             })
         });
+    };
+}
+
+macro_rules! bench {
+    ($c:expr, $name:expr, $seqlen:expr, $data:ident, $code:block) => {
+        let data = with_seqlen(N, $seqlen, false, false);
+        bench_base!($c, $name, data, $data, $code);
     };
 }
 
@@ -129,32 +136,32 @@ macro_rules! fastq_rs {
 
 macro_rules! bench_static500 {
     ($c:expr, $name:expr, $data:ident, $code:block) => {
-        let $data: &'static [u8] = &L500 as &[u8];
-        let name = format!("{} {}", $name, $data.len());
-        $c.bench_function(&name, move |b| b.iter(|| $code));
+        bench_base!($c, $name, &L500 as &Vec<u8>, $data, $code);
     };
 }
 
+
 fn readers(c: &mut Criterion) {
-    fastq!(c, "fastq seq_io 200 ", 200, r, {});
-    fastq!(c, "fastq seq_io 500 ", 500, r, {});
-    fastq_owned!(c, "fastq seq_io 500 owned", 500);
-    fastq_rs!(c, "fastq_rs seq_io 500 ", 500, r, {});
-    fastq_rs!(c, "fastq_rs seq_io 500 owned", 500, r, {
+    fastq!(c, "seq_io 200 ", 200, r, {});
+    fastq!(c, "seq_io 500 ", 500, r, {});
+    fastq_owned!(c, "seq_io 500 owned,iter", 500);
+    fastq!(c, "seq_io 500 owned", 500, r, {
         let _ = r.to_owned_record();
     });
-    fastq!(c, "fastq seq_io 1000 ", 1000, r, {});
+    fastq_rs!(c, "fastq_rs 500 ", 500, r, {});
+    fastq_rs!(c, "fastq_rs 500 owned", 500, r, {
+        let _ = r.to_owned_record();
+    });
+    fastq!(c, "seq_io 1000 ", 1000, r, {});
 
-    bio!(c, "fastq bio 200 owned", 200, r, {});
-    bio!(c, "fastq bio 500 owned", 500, r, {});
-    bio!(c, "fastq bio 1000 ", 1000, r, {});
+    bio!(c, "bio 200 owned", 200, r, {});
+    bio!(c, "bio 500 owned", 500, r, {});
+    bio!(c, "bio 1000 owned", 1000, r, {});
 
-    bench!(c, "fastq seqio 500 recordset,parallel", 500, data, {
+    bench!(c, "seq_io 500 recordset,parallel", 500, data, {
         let reader = seq_io::fastq::Reader::new(data);
         seq_io::parallel::read_parallel(
-            reader,
-            2,
-            2,
+            reader, 2, 2,
             |rset| {
                 for _ in &*rset {}
             },
@@ -167,7 +174,7 @@ fn readers(c: &mut Criterion) {
         );
     });
 
-    bench!(c, "fastq seqio 500 records,parallel", 500, data, {
+    bench!(c, "seq_io 500 records,parallel", 500, data, {
         let reader = seq_io::fastq::Reader::new(data);
         seq_io::parallel::parallel_fastq::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| None)
             .unwrap();
@@ -175,7 +182,7 @@ fn readers(c: &mut Criterion) {
 
     // read into record sets without parallelism
 
-    bench!(c, "fastq seqio 500 recordset", 500, data, {
+    bench!(c, "seq_io 500 recordset", 500, data, {
         let mut reader = seq_io::fastq::Reader::new(data);
         let mut rset = seq_io::fastq::RecordSet::default();
         while let Some(result) = reader.read_record_set(&mut rset) {
@@ -184,11 +191,14 @@ fn readers(c: &mut Criterion) {
         }
     });
 
-    bio!(c, "fastq bio 500 seq", 500, r, {
+    fastq!(c, "seq_io 500 seq", 500, r, {
+        let _ = r.seq();
+    });
+    bio!(c, "bio 500 seq,owned", 500, r, {
         let _ = r.seq();
     });
 
-    bench_static500!(c, "fastq fastq_rs 500 recordset,parallel", data, {
+    bench_static500!(c, "fastq_rs 500 recordset,parallel", data, {
         let parser = fastq::Parser::new(data);
         let res: Vec<_> = parser
             .parallel_each(2, |rsets| {
@@ -213,26 +223,26 @@ macro_rules! bench_cap {
 }
 
 fn readers_cap(c: &mut Criterion) {
-    bench_cap!(c, "fastq seq_io_cap 200 8ki", 200, 1 << 13, N);
-    bench_cap!(c, "fastq seq_io_cap 200 16ki", 200, 1 << 14, N);
-    bench_cap!(c, "fastq seq_io_cap 200 32ki", 200, 1 << 15, N);
-    bench_cap!(c, "fastq seq_io_cap 200 64ki", 200, 1 << 16, N);
-    bench_cap!(c, "fastq seq_io_cap 200 128ki", 200, 1 << 17, N);
-    bench_cap!(c, "fastq seq_io_cap 200 256ki", 200, 1 << 18, N);
+    bench_cap!(c, "seq_io_cap 200 8ki", 200, 1 << 13, N);
+    bench_cap!(c, "seq_io_cap 200 16ki", 200, 1 << 14, N);
+    bench_cap!(c, "seq_io_cap 200 32ki", 200, 1 << 15, N);
+    bench_cap!(c, "seq_io_cap 200 64ki", 200, 1 << 16, N);
+    bench_cap!(c, "seq_io_cap 200 128ki", 200, 1 << 17, N);
+    bench_cap!(c, "seq_io_cap 200 256ki", 200, 1 << 18, N);
 
-    bench_cap!(c, "fastq seq_io_cap 1000 8ki", 1000, 1 << 13, N);
-    bench_cap!(c, "fastq seq_io_cap 1000 16ki", 1000, 1 << 14, N);
-    bench_cap!(c, "fastq seq_io_cap 1000 32ki", 1000, 1 << 15, N);
-    bench_cap!(c, "fastq seq_io_cap 1000 64ki", 1000, 1 << 16, N);
-    bench_cap!(c, "fastq seq_io_cap 1000 128ki", 1000, 1 << 17, N);
-    bench_cap!(c, "fastq seq_io_cap 1000 256ki", 1000, 1 << 18, N);
+    bench_cap!(c, "seq_io_cap 1000 8ki", 1000, 1 << 13, N);
+    bench_cap!(c, "seq_io_cap 1000 16ki", 1000, 1 << 14, N);
+    bench_cap!(c, "seq_io_cap 1000 32ki", 1000, 1 << 15, N);
+    bench_cap!(c, "seq_io_cap 1000 64ki", 1000, 1 << 16, N);
+    bench_cap!(c, "seq_io_cap 1000 128ki", 1000, 1 << 17, N);
+    bench_cap!(c, "seq_io_cap 1000 256ki", 1000, 1 << 18, N);
 
-    bench_cap!(c, "fastq seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
-    bench_cap!(c, "fastq seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
-    bench_cap!(c, "fastq seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
-    bench_cap!(c, "fastq seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
-    bench_cap!(c, "fastq seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
-    bench_cap!(c, "fastq seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
+    bench_cap!(c, "seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
 }
 
 criterion_group!(benches, readers, readers_cap);
