@@ -443,8 +443,6 @@ where
     /// If an error was returned before, seeking to that position will return the same error.
     /// The same is not always true with `None`. If there is no newline character at the end of the
     /// file, the last record will be returned instead of `None`.
-    /// Returns an iterator over all FASTA records like `Reader::records()`,
-    /// but with the difference that it owns the underlying reader.
     ///
     /// # Example
     ///
