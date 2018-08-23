@@ -78,13 +78,7 @@ and [Rust-Bio](https://rust-bio.github.io/) (*bio*).
 The bars represent the throughput in GB/s (+/- standard error of the mean).
 Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.13) using Rust 1.23 nightly
 
-**FASTA**
-
-![FASTQ readers](bench_results/bench_fasta_simple.png)
-
-**FASTQ**
-
-![FASTQ readers](bench_results/bench_fastq_simple.png)
+![benchmark results](bench_results/reader_comparison_simple.png)
 
 **Explanation of labels**:
 
