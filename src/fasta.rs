@@ -109,23 +109,6 @@ where
         &self.buf_policy
     }
 
-    #[inline]
-    fn proceed(&mut self) -> Option<Result<(), Error>> {
-        if self.finished || !self.initialized() && !try_opt!(self.init()) {
-            return None;
-        }
-
-        if !self.buf_pos.is_new() {
-            self.next_pos();
-        }
-
-        if !try_opt!(self.search()) && !try_opt!(self.next_complete()) {
-            return None;
-        }
-
-        Some(Ok(()))
-    }
-
     /// Searches the next FASTA record and returns a [RefRecord](struct.RefRecord.html) that
     /// borrows its data from the underlying buffer of this reader.
     ///
@@ -142,12 +125,24 @@ where
     /// }
     /// ```
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
-        self.proceed().map(|r| {
-            r.map(move |_| RefRecord {
+        if self.finished || !self.initialized() && !try_opt!(self.init()) {
+            return None;
+        }
+
+        if !self.buf_pos.is_new() {
+            self.next_pos();
+        }
+
+        if !try_opt!(self.search()) && !try_opt!(self.next_complete()) {
+            return None;
+        }
+
+        Some(Ok(
+            RefRecord {
                 buffer: self.get_buf(),
                 buf_pos: &self.buf_pos,
-            })
-        })
+            }
+        ))
     }
 
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
@@ -271,7 +266,6 @@ where
         // nothing found
         if self.get_buf().len() < self.buffer.capacity() {
             // EOF reached, there will be no next record
-
             self.finished = true;
             self.buf_pos.seq_pos.push(self.search_pos);
             if self.buf_pos.seq_pos.len() == 1 {

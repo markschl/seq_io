@@ -112,22 +112,6 @@ where
         &self.buf_policy
     }
 
-    fn proceed(&mut self) -> Option<Result<(), Error>> {
-        if self.finished || !self.initialized() && !try_opt!(self.init()) {
-            return None;
-        }
-
-        if !self.buf_pos.is_new() {
-            self.next_pos();
-        }
-
-        if !try_opt!(self.find()) && !try_opt!(self.next_complete()) {
-            return None;
-        }
-
-        Some(Ok(()))
-    }
-
     /// Searches the next FASTQ record and returns a [RefRecord](struct.RefRecord.html) that
     /// borrows its data from the underlying buffer of this reader.
     ///
@@ -144,12 +128,24 @@ where
     /// }
     /// ```
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
-        self.proceed().map(|r| {
-            r.map(move |_| RefRecord {
+        if self.finished || !self.initialized() && !try_opt!(self.init()) {
+            return None;
+        }
+
+        if !self.buf_pos.is_new() {
+            self.next_pos();
+        }
+
+        if !try_opt!(self.find()) && !try_opt!(self.next_complete()) {
+            return None;
+        }
+
+        Some(Ok(
+            RefRecord {
                 buffer: self.get_buf(),
                 buf_pos: &self.buf_pos,
-            })
-        })
+            }
+        ))
     }
 
     #[inline(never)]
@@ -214,11 +210,11 @@ where
         self.buf_pos.pos.0 = self.buf_pos.pos.1 + 1;
     }
 
-    // Reads the current record  and returns true if found.
+    // Reads the current record and returns true if found.
     // Returns false if incomplete because end of buffer reached,
-    // meaning that the last record may be incomplete
-    // search_start >= self.buf_pos.start.
-    // Updates the position.
+    // meaning that the last record may be incomplete.
+    // Updates self.search_pos.
+    #[inline]
     fn find(&mut self) -> Result<bool, Error> {
         self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
             self.search_pos = SearchPos::HEAD;
@@ -349,27 +345,10 @@ where
     #[inline(never)]
     fn next_complete(&mut self) -> Result<bool, Error> {
         loop {
-            let bufsize = self.get_buf().len();
-            if bufsize < self.buffer.capacity() {
+            if self.get_buf().len() < self.buffer.capacity() {
                 // EOF reached, there will be no next record
-                self.finished = true;
-                if self.search_pos == SearchPos::QUAL {
-                    // no line ending at end of last record
-                    self.buf_pos.pos.1 = bufsize;
-                    self.validate()?;
-                    return Ok(true);
-                }
+                return self.check_end();
 
-                let rest = &self.get_buf()[self.buf_pos.pos.0..];
-                if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).is_empty()) {
-                    // allow up to 3 newlines after last record (more will cause an Unexpected error)
-                    return Ok(false);
-                }
-
-                return Err(Error::UnexpectedEnd {
-                    pos: self
-                        .get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
-                });
             } else if self.buf_pos.pos.0 == 0 {
                 // first record already incomplete -> buffer too small
                 self.grow()?;
@@ -386,6 +365,27 @@ where
                 return Ok(true);
             }
         }
+    }
+
+    fn check_end(&mut self) -> Result<bool, Error> {
+        self.finished = true;
+        if self.search_pos == SearchPos::QUAL {
+            // no line ending at end of last record
+            self.buf_pos.pos.1 = self.get_buf().len();
+            self.validate()?;
+            return Ok(true);
+        }
+
+        let rest = &self.get_buf()[self.buf_pos.pos.0..];
+        if rest.split(|c| *c == b'\n').all(|l| trim_cr(l).is_empty()) {
+            // allow up to 3 newlines after last record (more will cause an Unexpected error)
+            return Ok(false);
+        }
+
+        Err(Error::UnexpectedEnd {
+            pos: self
+                .get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
+        })
     }
 
     // grow buffer based on policy
