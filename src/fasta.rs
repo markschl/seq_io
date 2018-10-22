@@ -34,7 +34,7 @@ where
 {
     /// Creates a new reader with the default buffer size of 64 KiB
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```
     /// use seq_io::fasta::{Reader,Record};
@@ -70,7 +70,7 @@ where
 impl Reader<File, DefaultPolicy> {
     /// Creates a reader from a file path.
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```no_run
     /// use seq_io::fasta::Reader;
@@ -112,7 +112,7 @@ where
     /// Searches the next FASTA record and returns a [RefRecord](struct.RefRecord.html) that
     /// borrows its data from the underlying buffer of this reader.
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```no_run
     /// use seq_io::fasta::{Reader,Record};
@@ -354,7 +354,7 @@ where
     }
 
     /// Returns the current position (useful with `seek()`).
-    /// If `next()` or `proceed()` have not yet been called, `None` will be returned.
+    /// If `next()` has not yet been called, `None` will be returned.
     ///
     /// # Example
     ///
@@ -522,6 +522,7 @@ where
     }
 }
 
+/// Holds line number and byte offset of a FASTA record
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     line: u64,
@@ -860,6 +861,7 @@ impl<'a> iter::IntoIterator for &'a RecordSet {
     }
 }
 
+/// Iterator over record sets
 pub struct RecordSetIter<'a> {
     buffer: &'a [u8],
     pos: iter::Take<slice::Iter<'a, BufferPosition>>,

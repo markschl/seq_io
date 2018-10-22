@@ -43,7 +43,7 @@ where
 {
     /// Creates a new reader with the default buffer size of 64 KiB
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```
     /// use seq_io::fastq::{Reader, Record};
@@ -74,7 +74,7 @@ where
 impl Reader<File, DefaultBufPolicy> {
     /// Creates a reader from a file path.
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```no_run
     /// use seq_io::fastq::Reader;
@@ -115,7 +115,7 @@ where
     /// Searches the next FASTQ record and returns a [RefRecord](struct.RefRecord.html) that
     /// borrows its data from the underlying buffer of this reader.
     ///
-    /// Example:
+    /// # Example:
     ///
     /// ```no_run
     /// use seq_io::fastq::{Reader, Record};
@@ -592,6 +592,7 @@ where
     }
 }
 
+/// Holds line number and byte offset of a FASTQ record
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     line: u64,
@@ -904,6 +905,7 @@ impl<'a> iter::IntoIterator for &'a RecordSet {
     }
 }
 
+/// Iterator over record sets
 pub struct RecordSetIter<'a> {
     buffer: &'a [u8],
     pos: slice::Iter<'a, BufferPosition>,
