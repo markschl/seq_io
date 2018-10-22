@@ -717,9 +717,11 @@ impl<'a> Record for RefRecord<'a> {
 
 impl<'a> RefRecord<'a> {
     /// Return an iterator over all sequence lines in the data
+    #[inline]
     pub fn seq_lines(&self) -> SeqLines {
         SeqLines {
             data: &self.buffer,
+            len: self.buf_pos.seq_pos.len() - 1,
             pos_iter: self
                 .buf_pos
                 .seq_pos
@@ -728,10 +730,11 @@ impl<'a> RefRecord<'a> {
         }
     }
 
-    /// Returns the number of sequence lines
+    /// Returns the number of sequence lines.
+    /// Equivalent to `self.seq_lines().len()`
     #[inline]
     pub fn num_seq_lines(&self) -> usize {
-        self.buf_pos.seq_pos.len() - 1
+        self.seq_lines().len()
     }
 
     /// Returns the full sequence. If the sequence consists of a single line,
@@ -778,26 +781,43 @@ impl<'a> RefRecord<'a> {
     }
 }
 
+/// Iterator over sequence the lines of a FASTA record.
 pub struct SeqLines<'a> {
     data: &'a [u8],
+    len: usize,
     pos_iter: iter::Zip<slice::Iter<'a, usize>, iter::Skip<slice::Iter<'a, usize>>>,
 }
 
 impl<'a> Iterator for SeqLines<'a> {
     type Item = &'a [u8];
 
+    #[inline]
     fn next(&mut self) -> Option<&'a [u8]> {
         self.pos_iter
             .next()
             .map(|(start, next_start)| trim_cr(&self.data[*start + 1..*next_start]))
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let l = self.len();
+        (l, Some(l))
+    }
 }
 
 impl<'a> DoubleEndedIterator for SeqLines<'a> {
+    #[inline]
     fn next_back(&mut self) -> Option<&'a [u8]> {
         self.pos_iter
             .next_back()
             .map(|(start, next_start)| trim_cr(&self.data[*start + 1..*next_start]))
+    }
+}
+
+impl<'a> ExactSizeIterator for SeqLines<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.len
     }
 }
 

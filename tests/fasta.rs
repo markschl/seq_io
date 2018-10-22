@@ -168,6 +168,24 @@ fn test_fasta_no_newline_end() {
 }
 
 #[test]
+fn test_fasta_seqlines() {
+    let fasta = concat_lines(FASTA, b"\n", false);
+
+    let mut reader = Reader::new(fasta.as_slice());
+    let rec = reader.next().unwrap().unwrap();
+
+    let mut n = 0;
+    for (found, &expected) in rec.seq_lines().zip(&FASTA[1..6] as &[&[u8]]) {
+        assert_eq!(found, expected);
+        n += 1;
+    }
+    assert_eq!(n, 5);
+    assert_eq!(rec.seq_lines().len(), n);
+    assert_eq!(rec.num_seq_lines(), n);
+    assert_eq!(rec.seq_lines().size_hint(), (n, Some(n)));
+}
+
+#[test]
 fn test_fasta_recset() {
     let fa = &b">s1\nAT\nGC\n\n>s2\n\nATGC\n>s3\nATGC\n"[..];
 
