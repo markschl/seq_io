@@ -15,7 +15,7 @@ use buf_redux;
 use super::*;
 use std::error::Error as StdError;
 
-type DefaultBufPolicy = DoubleUntil8M;
+type DefaultBufPolicy = StdPolicy;
 
 const BUFSIZE: usize = 64 * 1024;
 
@@ -53,12 +53,12 @@ where
     /// let record = reader.next().unwrap().unwrap();
     /// assert_eq!(record.id(), Ok("id"))
     /// ```
-    pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
+    pub fn new(reader: R) -> Reader<R, StdPolicy> {
         Reader::with_capacity(reader, BUFSIZE)
     }
 
     /// Creates a new reader with a given buffer capacity
-    pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DoubleUntil8M> {
+    pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
         Reader {
             buffer: buf_redux::BufReader::with_capacity(capacity, reader),
@@ -66,7 +66,7 @@ where
             search_pos: SearchPos::HEAD,
             position: Position::new(1, 0),
             finished: false,
-            buf_policy: DoubleUntil8M,
+            buf_policy: StdPolicy,
         }
     }
 }

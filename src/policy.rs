@@ -1,9 +1,9 @@
 /// Policy that decides how a buffer should grow
 ///
-/// Returns the number of additional bytes given the
-/// current size. Returning None instead will indicate
-/// that the buffer has grown too big.
-/// Creates a new reader with a given buffer capacity and growth policy
+/// Takes the current buffer size in bytes and returns the new
+/// size the the buffer should grow to. Returning `None` instead will indicate
+/// that the buffer has grown too big. In this case, the FASTA and FASTQ readers
+/// will return `Error::BufferLimit`.
 ///
 /// # Example
 ///
@@ -16,7 +16,9 @@
 ///
 /// struct Max1G;
 ///
-/// // This policy limits the buffer size to 1 GB
+/// // This policy lets the buffer double each time, but
+/// // limits the buffer size to 1 GiB. Note that this is similar to how
+/// // `DoubleUntilLimited` works.
 /// impl BufPolicy for Max1G {
 ///     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
 ///         if current_size > 1 << 30 {
@@ -37,12 +39,14 @@ pub trait BufPolicy {
     fn grow_to(&mut self, current_size: usize) -> Option<usize>;
 }
 
-/// Buffer size doubles until it
-/// reaches 8 MB. Above, it will
-/// increase in steps of 8 MB
-pub struct DoubleUntil8M;
+/// Standard buffer policy: This policy corresponds to
+/// `DoubleUntil(8 * 1024 * 1024)`, meaning that buffer size
+/// doubles until it reaches 8 MiB. Above, it will
+/// increase in steps of 8 MiB. Buffer size is not limited,
+/// it could theoretically grow indefinitely.
+pub struct StdPolicy;
 
-impl BufPolicy for DoubleUntil8M {
+impl BufPolicy for StdPolicy {
     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
         Some(if current_size < 1 << 23 {
             current_size * 2
@@ -54,7 +58,8 @@ impl BufPolicy for DoubleUntil8M {
 
 /// Buffer size doubles until it reaches a given limit
 /// (in bytes). Above, it will increase linearly in
-/// steps of 'limit'.
+/// steps of 'limit'. Buffer size is not limited,
+/// it could theoretically grow indefinitely.
 pub struct DoubleUntil(pub usize);
 
 impl BufPolicy for DoubleUntil {
@@ -64,5 +69,36 @@ impl BufPolicy for DoubleUntil {
         } else {
             current_size + self.0
         })
+    }
+}
+
+/// Buffer size doubles until it reaches a given limit
+/// (in bytes). Above, it will increase linearly in
+/// steps of 'double_until'. Buffer size is additionally
+/// limited to `limit` bytes. Readers will return an error
+/// if this limit is .
+pub struct DoubleUntilLimited {
+    double_until: usize,
+    limit: usize
+}
+
+impl DoubleUntilLimited {
+    pub fn new(double_until: usize, limit: usize) -> Self {
+        DoubleUntilLimited { double_until, limit }
+    }
+}
+
+impl BufPolicy for DoubleUntilLimited {
+    fn grow_to(&mut self, current_size: usize) -> Option<usize> {
+        let new_size = if current_size < self.double_until {
+            current_size * 2
+        } else {
+            current_size + self.double_until
+        };
+        if new_size <= self.limit {
+            Some(new_size)
+        } else {
+            None
+        }
     }
 }

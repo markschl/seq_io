@@ -14,7 +14,7 @@ use memchr::Memchr;
 
 use super::*;
 
-type DefaultPolicy = DoubleUntil8M;
+type DefaultPolicy = StdPolicy;
 
 const BUFSIZE: usize = 64 * 1024;
 
@@ -45,7 +45,7 @@ where
     /// assert_eq!(record.id(), Ok("id"))
     /// ```
     #[inline]
-    pub fn new(reader: R) -> Reader<R, DoubleUntil8M> {
+    pub fn new(reader: R) -> Reader<R, StdPolicy> {
         Reader::with_capacity(reader, BUFSIZE)
     }
 
@@ -62,7 +62,7 @@ where
             position: Position::new(0, 0),
             search_pos: 0,
             finished: false,
-            buf_policy: DoubleUntil8M,
+            buf_policy: StdPolicy,
         }
     }
 }
