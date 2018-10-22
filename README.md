@@ -76,7 +76,8 @@ with lengths normally distributed around 500 bp and loaded into memory.
 The parsers from this crate (*seq_io*) are compared with [fastq-rs](https://github.com/aseyboldt/fastq-rs) (*fastq_rs*)
 and [Rust-Bio](https://rust-bio.github.io/) (*bio*).
 The bars represent the throughput in GB/s (+/- standard error of the mean).
-Run on a Mac Pro (Mid 2010, 2.8 GHz Quad-Core Intel Xeon, OS X 10.13) using Rust 1.23 nightly
+Run on a Thinkpad X1 Carbon (i7-5500U) with a fixed frequency of 2.3 GHz
+using Rust 1.31 nightly
 
 ![benchmark results](bench_results/reader_comparison_simple.png)
 
