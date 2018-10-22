@@ -34,11 +34,10 @@ dir.create(outdir, F)
 
 reader_plot <- function(data, facets) {
   ggplot(data, aes(reader, gb_per_s, fill=reader)) +
-    stat_summary(fun.y=mean, geom='bar', width=1, colour='#222222', size=0.2) + 
+    stat_summary(fun.y=mean, geom='bar', width=1, colour='#222222', size=0.2) +
     stat_summary(fun.data=mean_se, geom = 'errorbar', width=0.2, alpha=0.5) +
     facet_grid(paste(paste(facets, collapse= "+"), " ~ ."),
                space='free_y', scale='free_y', switch='y') +
-    expand_limits(x=1) +
     scale_fill_grey(start=0.05, end=0.95) +
     labs(x='reader', y='GB/s') +
     theme_bw() + theme(
@@ -68,14 +67,14 @@ simple <- lapply(split(reader_cmp_filter, reader_cmp_filter$format), function(da
 no_legend <- theme(legend.position='none')
 
 png(file.path(outdir, 'reader_comparison.png'), width=1400, height=700, res=150)
-plot_grid(NULL, NULL, 
+plot_grid(NULL, NULL,
           full$fasta + no_legend, full$fastq,
           rel_widths=c(10, 13), rel_heights=c(1, 12),
           labels=c('FASTA', 'FASTQ'), label_size=12)
 dev.off()
 
 png(file.path(outdir, 'reader_comparison_simple.png'), width=1400, height=250, res=150)
-plot_grid(NULL, NULL, 
+plot_grid(NULL, NULL,
           simple$fasta + no_legend, simple$fastq,
           rel_widths=c(10, 13), rel_heights=c(2, 12),
           labels=c('FASTA', 'FASTQ'), label_size=12)
@@ -87,7 +86,7 @@ for (fmt in levels(reader_cmp$format)) {
   png(file.path(outdir, sprintf('bench_%s.png', fmt)), width=1400, height=30*length(unique(data$group))+150, res=200)
   print(reader_plot(data, c('seqlen', 'config')))
   dev.off()
-  
+
   sub <- subset(data, seqlen == 500 & !grepl('(records|seq|iter)', config, perl=T))
   png(file.path(outdir, sprintf('bench_%s_simple.png', fmt)), width=1400, height=30*length(unique(sub$group))+150, res=200)
   print(reader_plot(sub, c('config')))
@@ -111,4 +110,3 @@ ggplot(cap_cmp, aes(bufsize, gb_per_s, color=as.factor(seqlen), linetype=format)
     scale_color_brewer(palette='Set1') +
     theme_bw()
 dev.off()
-
