@@ -2,6 +2,7 @@
 
 extern crate bio;
 extern crate rand;
+extern crate rand_isaac;
 extern crate seq_io;
 #[macro_use]
 extern crate lazy_static;
@@ -11,7 +12,8 @@ extern crate fastq;
 
 use criterion::Criterion;
 use rand::distributions::Normal;
-use rand::{IsaacRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
+use rand_isaac::isaac64::Isaac64Rng;
 use std::iter::repeat;
 use seq_io::fastq::Record;
 
@@ -38,7 +40,7 @@ fn gen_fastq(
     rec.extend(&newline);
 
     let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC);
-    let mut rng = IsaacRng::from_seed([5; 32]);
+    let mut rng = Isaac64Rng::from_seed([5; 32]);
 
     rng.sample_iter(&norm)
         .map(|slen| {
@@ -64,7 +66,7 @@ fn with_seqlen(nrecords: usize, seq_len: usize, sep_ids: bool, cr: bool) -> Vec<
     gen_fastq(nrecords, 20, 50, seq_len, sep_ids, cr)
 }
 
-/// data to be used with parallel readers that require 'static
+// data to be used with parallel readers that require 'static
 lazy_static! {
     static ref L500: Vec<u8> = { with_seqlen(N, 500, false, false) };
 }

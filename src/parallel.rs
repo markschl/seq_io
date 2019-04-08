@@ -131,7 +131,7 @@ where
     let (empty_send, empty_recv): (mpsc::SyncSender<R::DataSet>, _) = mpsc::sync_channel(queue_len);
 
     crossbeam::scope(|scope| {
-        let handle = scope.spawn::<_, Result<(), Er>>(move || {
+        let handle = scope.spawn::<_, Result<(), Er>>(move |_| {
             let mut reader = reader_init()?;
 
             let mut pool = scoped_threadpool::Pool::new(n_threads);
@@ -194,7 +194,7 @@ where
 
         handle.join().unwrap()?;
         Ok(out)
-    })
+    }).unwrap()
 }
 
 pub struct ParallelRecordsets<R, E, O>
