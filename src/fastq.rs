@@ -805,7 +805,7 @@ pub trait Record {
 
     /// Writes a record to the given `io::Write` instance
     #[inline]
-    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+    fn write<W: io::Write>(&self, writer: W) -> io::Result<()> {
         write_to(writer, self.head(), self.seq(), self.qual())
     }
 }
@@ -847,7 +847,7 @@ impl<'a> RefRecord<'a> {
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
     #[inline]
-    pub fn write_unchanged<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+    pub fn write_unchanged<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
         let data = &self.buffer[self.buf_pos.pos.0..self.buf_pos.pos.1];
         writer.write_all(data)?;
         writer.write_all(b"\n")
@@ -925,7 +925,7 @@ impl<'a> Iterator for RecordSetIter<'a> {
 /// Helper function for writing data (not necessarily stored in a `Record` instance)
 /// to the FASTQ format
 pub fn write_to<W: io::Write>(
-    writer: &mut W,
+    mut writer: W,
     head: &[u8],
     seq: &[u8],
     qual: &[u8],
@@ -944,7 +944,7 @@ pub fn write_to<W: io::Write>(
 /// to the FASTQ format. The ID and description parts of the header are supplied separately
 /// instead of a whole header line
 pub fn write_parts<W: io::Write>(
-    writer: &mut W,
+    mut writer: W,
     id: &[u8],
     desc: Option<&[u8]>,
     seq: &[u8],
