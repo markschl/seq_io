@@ -245,10 +245,8 @@ where
 
         for line in self.get_buf().split(|b| *b == b'\n') {
             line_num += 1;
-            if let Some(b) = line.first() {
-                if *b != b'\r' {
-                    return Ok(Some((line_num, pos, *b)));
-                }
+            if !line.is_empty() && line != b"\r" {
+                return Ok(Some((line_num, pos, line[0])));
             }
             pos += line.len() + 1;
         }
