@@ -124,14 +124,6 @@ fn test_fasta_invalid_start() {
 }
 
 #[test]
-fn test_fasta_truncated() {
-    let mut reader = Reader::new(&b">id1\nATGC\n>id2"[..]);
-    reader.next().unwrap().unwrap();
-    let rec = reader.next().unwrap();
-    assert_matches!(rec, Err(Error::UnexpectedEnd { line: 3 }));
-}
-
-#[test]
 fn test_fasta_none_after_err() {
     let mut reader = Reader::new(&b"id\nATGC\n"[..]);
     assert!(reader.next().unwrap().is_err());
@@ -165,6 +157,21 @@ fn test_fasta_no_newline_end() {
     let mut reader = Reader::new(&b">id\nATGC"[..]);
     assert_eq!(reader.next().unwrap().unwrap().id_bytes(), b"id");
     assert!(reader.next().is_none());
+}
+
+#[test]
+fn test_fasta_no_seq() {
+    let mut reader = Reader::new(&b">id1\n>id2"[..]);
+    {
+        let r = reader.next().unwrap().unwrap();
+        assert_eq!(r.id_bytes(), b"id1");
+        assert!(r.seq().is_empty());
+    }
+    {
+        let r = reader.next().unwrap().unwrap();
+        assert_eq!(r.id_bytes(), b"id2");
+        assert!(r.seq().is_empty());
+}
 }
 
 #[test]

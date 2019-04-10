@@ -266,11 +266,6 @@ where
             // EOF reached, there will be no next record
             self.finished = true;
             self.buf_pos.seq_pos.push(self.search_pos);
-            if self.buf_pos.seq_pos.len() == 1 {
-                return Err(Error::UnexpectedEnd {
-                    line: self.position.line as usize,
-                });
-            }
             return Ok(true);
         }
 
@@ -293,7 +288,7 @@ where
             }
 
             self.buf_pos.seq_pos.push(pos);
-            if self.buf_pos.seq_pos.len() > 1 && self.get_buf()[next_line_start] == b'>' {
+            if self.get_buf()[next_line_start] == b'>' {
                 // complete record was found
                 self.search_pos = next_line_start;
                 return true;
@@ -554,11 +549,6 @@ pub enum Error {
         /// byte that was found instead
         found: u8,
     },
-    /// Truncated record (no sequence found)
-    UnexpectedEnd {
-        /// line number (1-based count)
-        line: usize,
-    },
     /// Size limit of buffer was reached, which happens if `BufPolicy::new_size()` returned
     /// `None` (not the case by default).
     BufferLimit,
@@ -572,11 +562,6 @@ impl fmt::Display for Error {
                 f,
                 "FASTA parse error: expected '>' but found '{}' at file start, line {}.",
                 (found as char).escape_default(),
-                line
-            ),
-            Error::UnexpectedEnd { line } => write!(
-                f,
-                "FASTA parse error: unexpected end of input at line {}",
                 line
             ),
             Error::BufferLimit => write!(f, "FASTA parse error: buffer limit reached."),
@@ -595,7 +580,6 @@ impl error::Error for Error {
         match *self {
             Error::Io(ref e) => e.description(),
             Error::InvalidStart { .. } => "invalid record start",
-            Error::UnexpectedEnd { .. } => "unexpected end of input",
             Error::BufferLimit => "buffer limit reached",
         }
     }
