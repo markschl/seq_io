@@ -2,8 +2,8 @@
 # FASTA and FASTQ parsing and writing in Rust.
 
 ![docs.rs](https://docs.rs/seq_io/badge.svg)
-[![Linux build status](https://api.travis-ci.org/markschl/seq_io.png)](https://travis-ci.org/markschl/seq_io)
-[![Windows build status](https://ci.appveyor.com/api/projects/status/github/markschl/seq_io?svg=true)](https://ci.appveyor.com/project/markschl/seq_io)
+[![Build status](https://api.travis-ci.org/markschl/seq_io.png)](https://travis-ci.org/markschl/seq_io)
+seq_io)
 
 This library provides an(other) attempt at parsing of the sequence formats FASTA and FASTQ, as well as writing.
 
