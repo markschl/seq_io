@@ -283,20 +283,20 @@ where
     }
 
     fn first_byte(&mut self) -> Result<Option<(usize, usize, u8)>, Error> {
-        let n = fill_buf(&mut self.buffer)?;
-        if n == 0 {
-            return Ok(None);
-        }
 
-        let mut pos = 0;
         let mut line_num = 0;
 
-        for line in self.get_buf().split(|b| *b == b'\n') {
-            line_num += 1;
-            if !line.is_empty() && line != b"\r" {
-                return Ok(Some((line_num, pos, line[0])));
+        while fill_buf(&mut self.buffer)? > 0 {
+            let mut pos = 0;
+
+            for line in self.get_buf().split(|b| *b == b'\n') {
+                line_num += 1;
+                if !line.is_empty() && line != b"\r" {
+                    return Ok(Some((line_num, pos, line[0])));
+                }
+                pos += line.len() + 1;
             }
-            pos += line.len() + 1;
+            self.buffer.consume(pos - 1);
         }
         Ok(None)
     }
