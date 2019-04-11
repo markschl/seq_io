@@ -160,8 +160,9 @@ fn fill_buf<R>(
 where
     R: io::Read,
 {
-    let mut num_read = reader.buffer().len();
-    while num_read < reader.capacity() {
+    let initial_size = reader.buffer().len();
+    let mut num_read = 0;
+    while initial_size + num_read < reader.capacity() {
         match reader.read_into_buf() {
             Ok(0) => break,
             Ok(n) => num_read += n,

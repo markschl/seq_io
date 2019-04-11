@@ -284,15 +284,19 @@ where
 
         while fill_buf(&mut self.buf_reader)? > 0 {
             let mut pos = 0;
-
+            let mut last_line_len = 0;
             for line in self.get_buf().split(|b| *b == b'\n') {
                 line_num += 1;
                 if !line.is_empty() && line != b"\r" {
                     return Ok(Some((line_num, pos, line[0])));
                 }
                 pos += line.len() + 1;
+                last_line_len = line.len();
             }
-            self.buf_reader.consume(pos - 1);
+            // If an orphan '\r' is found at the end of the buffer,
+            // we need to move it to the start and re-search the line
+            self.buf_reader.consume(pos - 1 - last_line_len);
+            self.buf_reader.make_room();
         }
         Ok(None)
     }
