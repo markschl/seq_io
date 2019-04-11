@@ -13,6 +13,8 @@ use std::str::{self, Utf8Error};
 use buf_redux;
 
 use super::*;
+use super::policy::{BufPolicy, StdPolicy};
+
 use std::error::Error as StdError;
 
 type DefaultBufPolicy = StdPolicy;
@@ -57,7 +59,8 @@ where
         Reader::with_capacity(reader, BUFSIZE)
     }
 
-    /// Creates a new reader with a given buffer capacity
+    /// Creates a new reader with a given buffer capacity. The minimum allowed
+    /// capacity is 3.
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
         Reader {
@@ -615,6 +618,7 @@ impl Position {
     }
 }
 
+/// FASTQ parsing error
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
@@ -628,14 +632,14 @@ pub enum Error {
         /// `ErrorPosition::line` has the position of the header, not sequence/qualities
         pos: ErrorPosition,
     },
-    /// Invalid start byte encountered (expected '@')
+    /// Invalid start byte encountered (expected `@`)
     InvalidStart {
         /// Byte found instead.
         found: u8,
         /// Position within file. `ErrorPosition::id` will be `None`.
         pos: ErrorPosition,
     },
-    /// Invalid separator byte encountered (expected '+')
+    /// Invalid separator byte encountered (expected `+`)
     InvalidSep {
         /// Byte found instead.
         found: u8,
@@ -647,8 +651,8 @@ pub enum Error {
         /// Position within file.
         pos: ErrorPosition,
     },
-    /// Size limit of buffer was reached, which happens if `BufPolicy::new_size()` returned
-    /// `None` (not the case by default).
+    /// Size limit of buffer was reached, which happens if `policy::BufPolicy::grow_to()` returned
+    /// `None`. This does not happen with the default `struct.DoubleUntil.html` policy.
     BufferLimit,
 }
 

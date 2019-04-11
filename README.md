@@ -9,12 +9,13 @@ This library provides an(other) attempt at parsing of the sequence formats FASTA
 
 **Features:**
 
-* Fast readers
+* Fast readers that minimize the use of allocations and copying of memory
 * Flexible methods for writing FASTA and FASTQ
 * Informative errors
 * Support for seeking
 * Serde support (for owned data structures)
 * Functions for parallel processing
+* Thoroughly tested using fuzzing techniques [see here](FUZZING.md)
 
 The FASTA parser can read and write multi-line files and allows
 iterating over the sequence lines without doing any allocation or
@@ -56,6 +57,7 @@ because calls to functions of the underlying buffered reader
 [View documentation](https://docs.rs/seq_io)
 
 ### Multi-threaded processing
+
 The `parallel` module contains functions for sending FASTQ/FASTA
 records to a thread pool where expensive calculations are done.
 Sequences are processed in batches (`RecordSet`) because sending across
@@ -63,6 +65,14 @@ channels has a performance impact. FASTA/FASTQ records can be accessed in
 both the 'worker' function and (after processing) a function running in the
 main thread.
 
+### Similar projects in Rust
+
+* *[Rust-Bio](https://rust-bio.github.io)*: Binformatics library that provides
+  simple FASTA and FASTQ readers.
+* *[fastq-rs](https://github.com/aseyboldt/fastq-rs)*: FASTQ parser with
+  comparable performance (see below). `seq_io` was inspired by `fastq_rs`.
+* *[Needletail](https://github.com/onecodex/needletail)* has a FASTA parser.
+* *[fasten](https://github.com/lskatz/fasten)* (FASTQ parser)
 
 ### Performance comparisons
 

@@ -1,40 +1,51 @@
-/// Policy that decides how a buffer should grow
+//! This module defines the [`BufPolicy`](trait.BufPolicy.html) trait,
+//! which configures how the internal buffer of the parsers should grow upon
+//! encountering large sequences that don't fit into the buffer.
+//!
+//! The standard policy ([`DoubleUntil`](struct.DoubleUntil.html))
+//! causes the initial buffer to double its size until a certain limit, and
+//! to further grow linearly above the limit. However, it does not
+//! impose a hard limit on buffer size, which may be problematic in some cases.
+//! For this purpose we can use
+//! [`DoubleUntilLimited`](struct.DoubleUntilLimited.html),
+//! or implement our own solution, as shown:
+//!
+//! ```no_run
+//! # extern crate seq_io;
+//! # fn main() {
+//! use seq_io::policy::BufPolicy;
+//! use seq_io::fasta::{Reader,Record};
+//! use std::io::stdin;
+//!
+//! struct Max1G;
+//!
+//! // This policy lets the buffer double each time, but
+//! // limits the buffer size to 1 GiB. Note that this is similar to how
+//! // `DoubleUntilLimited` works.
+//! impl BufPolicy for Max1G {
+//!     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
+//!         if current_size > 1 << 30 {
+//!             return None
+//!         }
+//!         Some(current_size * 2)
+//!     }
+//! }
+//!
+//! let mut reader = Reader::new(stdin()).set_policy(Max1G);
+//!
+//! while let Some(record) = reader.next() {
+//!     println!("{}", record.unwrap().id().unwrap());
+//! }
+//! # }
+//! ```
+
+/// Policy that configures how the internal buffer grows upon
+/// encountering large sequences.
 ///
 /// Takes the current buffer size in bytes and returns the new
 /// size the the buffer should grow to. Returning `None` instead will indicate
 /// that the buffer has grown too big. In this case, the FASTA and FASTQ readers
 /// will return `Error::BufferLimit`.
-///
-/// # Example
-///
-/// ```no_run
-/// # extern crate seq_io;
-/// # fn main() {
-/// use seq_io::BufPolicy;
-/// use seq_io::fasta::{Reader,Record};
-/// use std::io::stdin;
-///
-/// struct Max1G;
-///
-/// // This policy lets the buffer double each time, but
-/// // limits the buffer size to 1 GiB. Note that this is similar to how
-/// // `DoubleUntilLimited` works.
-/// impl BufPolicy for Max1G {
-///     fn grow_to(&mut self, current_size: usize) -> Option<usize> {
-///         if current_size > 1 << 30 {
-///             return None
-///         }
-///         Some(current_size * 2)
-///     }
-/// }
-///
-/// let mut reader = Reader::new(stdin()).set_policy(Max1G);
-///
-/// while let Some(record) = reader.next() {
-///     println!("{}", record.unwrap().id().unwrap());
-/// }
-/// # }
-/// ```
 pub trait BufPolicy {
     fn grow_to(&mut self, current_size: usize) -> Option<usize>;
 }
