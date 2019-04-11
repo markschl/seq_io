@@ -46,7 +46,6 @@
 //!   If at the start of a file, there will be an error, since `>` is expected.
 //!   Intermediate comments are appended to the sequence.
 
-
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::{self, BufRead, Seek};
@@ -58,8 +57,8 @@ use std::str::{self, Utf8Error};
 use buf_redux;
 use memchr::Memchr;
 
-use super::*;
 use super::policy::{BufPolicy, StdPolicy};
+use super::*;
 
 type DefaultPolicy = StdPolicy;
 
@@ -185,12 +184,10 @@ where
             return None;
         }
 
-        Some(Ok(
-            RefRecord {
-                buffer: self.get_buf(),
-                buf_pos: &self.buf_pos,
-            }
-        ))
+        Some(Ok(RefRecord {
+            buffer: self.get_buf(),
+            buf_pos: &self.buf_pos,
+        }))
     }
 
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
@@ -283,7 +280,6 @@ where
     }
 
     fn first_byte(&mut self) -> Result<Option<(usize, usize, u8)>, Error> {
-
         let mut line_num = 0;
 
         while fill_buf(&mut self.buf_reader)? > 0 {

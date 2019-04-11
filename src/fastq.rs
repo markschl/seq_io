@@ -12,8 +12,8 @@ use std::str::{self, Utf8Error};
 
 use buf_redux;
 
-use super::*;
 use super::policy::{BufPolicy, StdPolicy};
+use super::*;
 
 use std::error::Error as StdError;
 
@@ -143,12 +143,10 @@ where
             return None;
         }
 
-        Some(Ok(
-            RefRecord {
-                buffer: self.get_buf(),
-                buf_pos: &self.buf_pos,
-            }
-        ))
+        Some(Ok(RefRecord {
+            buffer: self.get_buf(),
+            buf_pos: &self.buf_pos,
+        }))
     }
 
     #[inline(never)]
@@ -351,7 +349,6 @@ where
             if self.get_buf().len() < self.buf_reader.capacity() {
                 // EOF reached, there will be no next record
                 return self.check_end();
-
             } else if self.buf_pos.pos.0 == 0 {
                 // first record already incomplete -> buffer too small
                 self.grow()?;
@@ -386,8 +383,7 @@ where
         }
 
         Err(Error::UnexpectedEnd {
-            pos: self
-                .get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
+            pos: self.get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
         })
     }
 

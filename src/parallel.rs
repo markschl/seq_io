@@ -104,7 +104,8 @@ where
         || Ok::<_, ()>(R::DataSet::default()),
         work,
         func,
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 /// This function allows initiating the reader and datasets using a closure.
@@ -194,7 +195,8 @@ where
 
         handle.join().unwrap()?;
         Ok(out)
-    }).unwrap()
+    })
+    .unwrap()
 }
 
 pub struct ParallelRecordsets<R, E, O>

@@ -54,16 +54,18 @@ fn gen_fasta(
                 r.extend(&newline);
             }
             assert!(
-                r.len() - rec.len() == slen + slen / seq_line * newline.len() + if slen % seq_line
-                    > 0
-                {
-                    newline.len()
-                } else {
-                    0
-                }
+                r.len() - rec.len()
+                    == slen
+                        + slen / seq_line * newline.len()
+                        + if slen % seq_line > 0 {
+                            newline.len()
+                        } else {
+                            0
+                        }
             );
             r
-        }).take(nrecords)
+        })
+        .take(nrecords)
         .flat_map(|r| r)
         .collect()
 }
@@ -142,7 +144,9 @@ fn readers(c: &mut Criterion) {
     bench!(c, "seq_io 500 recordset,parallel", 500, None, data, {
         let reader = fasta::Reader::new(data);
         seq_io::parallel::read_parallel(
-            reader, 2, 2,
+            reader,
+            2,
+            2,
             |rset| {
                 for _ in &*rset {}
             },

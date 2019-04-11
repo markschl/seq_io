@@ -72,8 +72,7 @@ fn test_fastq_reader() {
 #[test]
 fn test_fastq_policy() {
     let p = seq_io::DoubleUntilLimited::new(2, 5);
-    let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3)
-        .set_policy(p);
+    let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3).set_policy(p);
     let res = reader.next().unwrap();
     assert_matches!(res, Err(Error::BufferLimit));
 }
@@ -221,7 +220,8 @@ fn test_fastq_parallel() {
                 assert_eq!(rec.qual(), r0.qual());
                 None::<()>
             },
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 

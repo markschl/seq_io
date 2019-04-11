@@ -137,10 +137,10 @@ macro_rules! unwrap_or {
     };
 }
 
-pub mod policy;
 pub mod fasta;
 pub mod fastq;
 pub mod parallel;
+pub mod policy;
 
 /// Remove a final '\r' from a byte slice
 #[inline]

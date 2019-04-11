@@ -52,7 +52,8 @@ fn test_fasta_reader() {
                     // concatenated sequence
                     FASTA[start..end].concat().to_vec(),
                 )
-            }).collect();
+            })
+            .collect();
 
         // try different initial capacities to test
         // buffer growing feature
@@ -83,8 +84,7 @@ fn test_fasta_reader() {
 #[test]
 fn test_fasta_policy() {
     let p = seq_io::DoubleUntilLimited::new(2, 5);
-    let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3)
-        .set_policy(p);
+    let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3).set_policy(p);
     let res = reader.next().unwrap();
     assert_matches!(res, Err(Error::BufferLimit));
 }
@@ -177,7 +177,7 @@ fn test_fasta_no_seq() {
         assert!(r.num_seq_lines() == 0);
         assert!(r.seq_lines().count() == 0);
         assert!(r.seq_lines().rev().count() == 0);
-}
+    }
 }
 
 #[test]
@@ -252,7 +252,8 @@ fn test_fasta_parallel() {
                 assert_eq!(rec.seq(), r0.seq());
                 None::<()>
             },
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 

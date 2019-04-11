@@ -14,8 +14,8 @@ use criterion::Criterion;
 use rand::distributions::Normal;
 use rand::{Rng, SeedableRng};
 use rand_isaac::isaac64::Isaac64Rng;
-use std::iter::repeat;
 use seq_io::fastq::Record;
+use std::iter::repeat;
 
 /// number of records for all benchmarks
 const N: usize = 10_000;
@@ -56,7 +56,8 @@ fn gen_fastq(
             r.extend(repeat(66).take(slen));
             r.extend(&newline);
             r
-        }).take(nrecords)
+        })
+        .take(nrecords)
         .flat_map(|r| r)
         .collect()
 }
@@ -142,7 +143,6 @@ macro_rules! bench_static500 {
     };
 }
 
-
 fn readers(c: &mut Criterion) {
     fastq!(c, "seq_io 200 ", 200, r, {});
     fastq!(c, "seq_io 500 ", 500, r, {});
@@ -163,7 +163,9 @@ fn readers(c: &mut Criterion) {
     bench!(c, "seq_io 500 recordset,parallel", 500, data, {
         let reader = seq_io::fastq::Reader::new(data);
         seq_io::parallel::read_parallel(
-            reader, 2, 2,
+            reader,
+            2,
+            2,
             |rset| {
                 for _ in &*rset {}
             },
@@ -207,7 +209,8 @@ fn readers(c: &mut Criterion) {
                 for rset in rsets {
                     for _ in rset.iter() {}
                 }
-            }).unwrap();
+            })
+            .unwrap();
     });
 }
 

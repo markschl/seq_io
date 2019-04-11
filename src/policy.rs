@@ -90,12 +90,15 @@ impl BufPolicy for DoubleUntil {
 /// if this limit is .
 pub struct DoubleUntilLimited {
     double_until: usize,
-    limit: usize
+    limit: usize,
 }
 
 impl DoubleUntilLimited {
     pub fn new(double_until: usize, limit: usize) -> Self {
-        DoubleUntilLimited { double_until, limit }
+        DoubleUntilLimited {
+            double_until,
+            limit,
+        }
     }
 }
 
