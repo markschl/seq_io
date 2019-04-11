@@ -67,7 +67,7 @@ const BUFSIZE: usize = 64 * 1024;
 
 /// Parser for FASTA files.
 pub struct Reader<R: io::Read, P = DefaultPolicy> {
-    buffer: buf_redux::BufReader<R>,
+    buf_reader: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     position: Position,
     search_pos: usize,
@@ -102,10 +102,10 @@ where
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DefaultPolicy> {
         assert!(capacity >= 3);
         Reader {
-            buffer: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_reader: buf_redux::BufReader::with_capacity(capacity, reader),
             buf_pos: BufferPosition {
                 start: 0,
-                seq_pos: Vec::with_capacity(2),
+                seq_pos: Vec::with_capacity(1),
             },
             position: Position::new(0, 0),
             search_pos: 0,
@@ -142,7 +142,7 @@ where
     #[inline]
     pub fn set_policy<T: BufPolicy>(self, policy: T) -> Reader<R, T> {
         Reader {
-            buffer: self.buffer,
+            buf_reader: self.buf_reader,
             buf_pos: self.buf_pos,
             position: self.position,
             search_pos: self.search_pos,
@@ -253,7 +253,7 @@ where
 
     #[inline(always)]
     fn get_buf(&self) -> &[u8] {
-        self.buffer.buffer()
+        self.buf_reader.buffer()
     }
 
     #[inline(always)]
@@ -286,7 +286,7 @@ where
 
         let mut line_num = 0;
 
-        while fill_buf(&mut self.buffer)? > 0 {
+        while fill_buf(&mut self.buf_reader)? > 0 {
             let mut pos = 0;
 
             for line in self.get_buf().split(|b| *b == b'\n') {
@@ -296,7 +296,7 @@ where
                 }
                 pos += line.len() + 1;
             }
-            self.buffer.consume(pos - 1);
+            self.buf_reader.consume(pos - 1);
         }
         Ok(None)
     }
@@ -310,7 +310,7 @@ where
         }
 
         // nothing found
-        if self.get_buf().len() < self.buffer.capacity() {
+        if self.get_buf().len() < self.buf_reader.capacity() {
             // EOF reached, there will be no next record
             self.finished = true;
             self.buf_pos.seq_pos.push(self.search_pos);
@@ -325,7 +325,7 @@ where
     fn _search(&mut self) -> bool {
         let bufsize = self.get_buf().len();
 
-        for pos in Memchr::new(b'\n', &self.buffer.buffer()[self.search_pos..]) {
+        for pos in Memchr::new(b'\n', &self.buf_reader.buffer()[self.search_pos..]) {
             let pos = self.search_pos + pos;
             let next_line_start = pos + 1;
 
@@ -365,7 +365,7 @@ where
             }
 
             // fill up remaining buffer
-            fill_buf(&mut self.buffer)?;
+            fill_buf(&mut self.buf_reader)?;
 
             if self.search()? {
                 return Ok(true);
@@ -375,18 +375,18 @@ where
 
     // grow buffer
     fn grow(&mut self) -> Result<(), Error> {
-        let cap = self.buffer.capacity();
+        let cap = self.buf_reader.capacity();
         let new_size = self.buf_policy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
-        self.buffer.reserve(additional);
+        self.buf_reader.reserve(additional);
         Ok(())
     }
 
     // move incomplete bytes to start of buffer
     fn make_room(&mut self) {
         let consumed = self.buf_pos.start;
-        self.buffer.consume(consumed);
-        self.buffer.make_room();
+        self.buf_reader.consume(consumed);
+        self.buf_reader.make_room();
         self.buf_pos.start = 0;
         self.search_pos -= consumed;
         for s in &mut self.buf_pos.seq_pos {
@@ -520,8 +520,8 @@ where
         }
         self.position = pos.clone();
         self.search_pos = 0;
-        self.buffer.seek(io::SeekFrom::Start(pos.byte))?;
-        fill_buf(&mut self.buffer)?;
+        self.buf_reader.seek(io::SeekFrom::Start(pos.byte))?;
+        fill_buf(&mut self.buf_reader)?;
         self.buf_pos.reset(0);
         Ok(())
     }

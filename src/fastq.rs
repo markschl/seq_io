@@ -31,7 +31,7 @@ enum SearchPos {
 
 /// FASTQ parser.
 pub struct Reader<R: io::Read, P = DefaultBufPolicy> {
-    buffer: buf_redux::BufReader<R>,
+    buf_reader: buf_redux::BufReader<R>,
     buf_pos: BufferPosition,
     search_pos: SearchPos,
     position: Position,
@@ -64,7 +64,7 @@ where
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
         Reader {
-            buffer: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_reader: buf_redux::BufReader::with_capacity(capacity, reader),
             buf_pos: BufferPosition::default(),
             search_pos: SearchPos::HEAD,
             position: Position::new(1, 0),
@@ -100,7 +100,7 @@ where
     #[inline]
     pub fn set_policy<T: BufPolicy>(self, policy: T) -> Reader<R, T> {
         Reader {
-            buffer: self.buffer,
+            buf_reader: self.buf_reader,
             buf_pos: self.buf_pos,
             position: self.position,
             search_pos: self.search_pos,
@@ -153,7 +153,7 @@ where
 
     #[inline(never)]
     fn init(&mut self) -> Result<bool, Error> {
-        let n = fill_buf(&mut self.buffer)?;
+        let n = fill_buf(&mut self.buf_reader)?;
         if n == 0 {
             self.finished = true;
             return Ok(false);
@@ -202,7 +202,7 @@ where
 
     #[inline]
     fn get_buf(&self) -> &[u8] {
-        self.buffer.buffer()
+        self.buf_reader.buffer()
     }
 
     // Sets starting points for next position
@@ -348,7 +348,7 @@ where
     #[inline(never)]
     fn next_complete(&mut self) -> Result<bool, Error> {
         loop {
-            if self.get_buf().len() < self.buffer.capacity() {
+            if self.get_buf().len() < self.buf_reader.capacity() {
                 // EOF reached, there will be no next record
                 return self.check_end();
 
@@ -360,7 +360,7 @@ where
                 self.make_room();
             }
 
-            fill_buf(&mut self.buffer)?;
+            fill_buf(&mut self.buf_reader)?;
 
             // self.buf_pos.pos.1 = 0;
             // self.search_pos = SearchPos::HEAD;
@@ -393,18 +393,18 @@ where
 
     // grow buffer based on policy
     fn grow(&mut self) -> Result<(), Error> {
-        let cap = self.buffer.capacity();
+        let cap = self.buf_reader.capacity();
         let new_size = self.buf_policy.grow_to(cap).ok_or(Error::BufferLimit)?;
         let additional = new_size - cap;
-        self.buffer.reserve(additional);
+        self.buf_reader.reserve(additional);
         Ok(())
     }
 
     // move incomplete bytes to start of buffer and retry
     fn make_room(&mut self) {
         let consumed = self.buf_pos.pos.0;
-        self.buffer.consume(consumed);
-        self.buffer.make_room();
+        self.buf_reader.consume(consumed);
+        self.buf_reader.make_room();
 
         self.buf_pos.pos.0 = 0;
 
@@ -553,7 +553,7 @@ where
             return Ok(());
         }
 
-        self.buffer.seek(io::SeekFrom::Start(pos.byte))?;
+        self.buf_reader.seek(io::SeekFrom::Start(pos.byte))?;
         self.buf_pos.reset(0);
         Ok(())
     }
