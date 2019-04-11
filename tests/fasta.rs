@@ -83,7 +83,7 @@ fn test_fasta_reader() {
 
 #[test]
 fn test_fasta_policy() {
-    let p = seq_io::DoubleUntilLimited::new(2, 5);
+    let p = seq_io::policy::DoubleUntilLimited::new(2, 5);
     let mut reader = Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3).set_policy(p);
     let res = reader.next().unwrap();
     assert_matches!(res, Err(Error::BufferLimit));
