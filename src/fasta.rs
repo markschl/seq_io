@@ -589,7 +589,10 @@ impl error::Error for Error {
 struct BufferPosition {
     /// index of '>'
     start: usize,
-    /// Vec with indices of line endings just *before* line start (pos - 1) referred to
+    /// Indicate line start, but actually it is one byte before (start - 1), which is usually
+    /// the line terminator of the header (if there is one). The last index in the Vec is always
+    /// the last byte of the last sequence line (including line terminator if present).
+    /// Therefore, the length of this Vec should never be 0.
     seq_pos: Vec<usize>,
 }
 
@@ -679,9 +682,13 @@ impl<'a> Record for RefRecord<'a> {
     /// to access the whole sequence at once.
     #[inline]
     fn seq(&self) -> &[u8] {
-        let start = *self.buf_pos.seq_pos.first().unwrap() + 1;
-        let end = *self.buf_pos.seq_pos.last().unwrap();
-        trim_cr(&self.buffer[start..end])
+        if self.buf_pos.seq_pos.len() > 1 {
+            let start = *self.buf_pos.seq_pos.first().unwrap() + 1;
+            let end = *self.buf_pos.seq_pos.last().unwrap();
+            trim_cr(&self.buffer[start..end])
+        } else {
+            b""
+        }
     }
 
     #[inline]

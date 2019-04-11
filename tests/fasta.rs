@@ -166,11 +166,17 @@ fn test_fasta_no_seq() {
         let r = reader.next().unwrap().unwrap();
         assert_eq!(r.id_bytes(), b"id1");
         assert!(r.seq().is_empty());
+        assert!(r.num_seq_lines() == 0);
+        assert!(r.seq_lines().count() == 0);
+        assert!(r.seq_lines().rev().count() == 0);
     }
     {
         let r = reader.next().unwrap().unwrap();
         assert_eq!(r.id_bytes(), b"id2");
         assert!(r.seq().is_empty());
+        assert!(r.num_seq_lines() == 0);
+        assert!(r.seq_lines().count() == 0);
+        assert!(r.seq_lines().rev().count() == 0);
 }
 }
 
