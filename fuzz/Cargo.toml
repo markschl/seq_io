@@ -4,19 +4,18 @@ name = "seq_io-fuzz"
 version = "0.0.1"
 authors = ["Automatically generated"]
 publish = false
+edition = "2018"
+
+[features]
+strict_length_check = []
 
 [dependencies]
-criterion = { version = "0.2", default_features = false }
-bio = "0.25"
 matches = "0.1"
+seq_io = { path = "..", features = ["strict_length_check"] }
+libfuzzer-sys = { libfuzzer-sys = "0.3" }
 
 [package.metadata]
 cargo-fuzz = true
-
-[dependencies.seq_io]
-path = ".."
-[dependencies.libfuzzer-sys]
-git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
 
 # Prevent this from interfering with workspaces
 [workspace]
@@ -29,11 +28,11 @@ incremental = false
 [[bin]]
 name = "fasta"
 path = "fuzz_targets/fasta.rs"
+test = false
+doc = false
 
 [[bin]]
 name = "fastq"
 path = "fuzz_targets/fastq.rs"
-
-[[bin]]
-name = "cmp_fasta_rdr"
-path = "fuzz_targets/cmp_fasta_rdr.rs"
+test = false
+doc = false

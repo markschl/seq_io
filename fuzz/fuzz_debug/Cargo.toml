@@ -1,0 +1,11 @@
+[package]
+name = "fuzz_debug"
+version = "0.1.0"
+authors = ["markschl <markschl19@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+seq_io = { path = "../..", features = ["strict_length_check"] }
+
+[workspace]
+members = ["."]

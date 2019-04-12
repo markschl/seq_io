@@ -1,174 +1,109 @@
-//! This library provides an(other) attempt at high performance FASTA and FASTQ parsing and writing.
-//! The FASTA parser can read and write multi-line files. The FASTQ parser supports only single
-//! lines.
+//! This library provides parsing and writing of FASTA, FASTQ and FASTX at a
+//! high performance.
 //!
-//! By default, the parsers avoid allocations and copying as much as possible.
-//! [`fasta::RefRecord`](fasta/struct.RefRecord.html) and
-//! [`fastq::RefRecord`](fastq/struct.RefRecord.html) borrow from the underlying buffered
-//! reader. In addition, `fasta::RefRecord` offers the
-//! [`seq_lines()`](fasta/struct.RefRecord.html#method.seq_lines) method,
-//! which allows iterating over individual sequence lines in a multi-line FASTA file
-//! without the need to copy the data.
+//! For a detailed documentation of the components, please refer to the
+//! module pages listed here:
 //!
-//! By default, both parsers use a buffer of 64 KiB size. If a record with a longer
-//! sequence is encountered, the buffer will automatically grow. How it grows can be
-//! configured. See [below](#large-sequences) for more information.
+//! * **FASTA**: See [`fasta`](crate::fasta) module for an introduction.
+//! * **FASTQ**: See [`fastq`](crate::fastq) module. A separate parser supporting
+//!   multi-line FASTQ is found in [`fastq::multiline`](crate::fastq::multiline).
+//! * **FASTX**: There are two approaches:
+//!     - The parsers from the [`fastx`](crate::fastx) and
+//!       [`fastx::multiline_qual`](crate::fastx::multiline_qual) module
+//!     - An approach based on trait objects and dynamic dispatch found in the
+//!       [`fastx::dynamic`](crate::fastx::dynamic) module.
 //!
-//! # More detailed documentation
+//! # Special features
 //!
-//! Please refer to the module docs for more information on how to use the reading and writing
-//! functions, as well as information on the exact parsing behaviour:
+//! The following features are not covered in the module docs for the individual
+//! formats:
 //!
-//! * [`fasta module`](fasta) and [`fasta::Reader`](fasta/struct.Reader.html)
-//! * [`fastq module`](fastq) and [`fastq::Reader`](fastq/struct.Reader.html)
+//! ## Parallel processing
 //!
-//! # Example FASTQ parser:
+//! All readers allow reading sequence records into chunks called record sets.
+//! Effectively, they are just copies of the internal buffer with associated
+//! positional information. These record sets can be sent around in channels
+//! without the overhead that sending single records would have. The idea for
+//! this was borrowed from [fastq-rs](https://github.com/aseyboldt/fastq-rs).
 //!
-//! This code prints the ID string from each FASTQ record.
+//! The [`parallel`](crate::parallel) module offers a few functions for
+//! processing sequence records and record sets in a worker pool and then
+//! sending them along with the processing results to the main thread.
+//! The functions work; the API design may not be optimal yet.
 //!
-//! ```no_run
-//! use seq_io::fastq::{Reader,Record};
+//! ## Position tracking and seeking
 //!
-//! let mut reader = Reader::from_path("seqs.fastq").unwrap();
+//! All readers keep track of the byte offset, line number and record number
+//! while parsing. The current position can be stored and used later for seeking
+//! back to the same position. See [`here`](crate::fasta::Reader::seek) for
+//! an example.
 //!
-//! while let Some(record) = reader.next() {
-//!     let record = record.expect("Error reading record");
-//!     println!("{}", record.id().unwrap());
-//! }
-//! ```
+//! It is not yet possible to restore a record completely given positional
+//! information (such as from a `.fai` file). All that is done currently is
+//! to set the position, so `next()` will return the correct record.
 //!
-//! # Example FASTA parser calculating mean sequence length:
+//! # Design notes
 //!
-//! The FASTA reader works just the same. One challenge with the FASTA
-//! format is that the sequence can be broken into multiple lines.
-//! Therefore, it is not always possible to get a slice to the whole sequence
-//! without copying the data. But it is possible to use `seq_lines()`
-//! for efficiently iterating over each sequence line:
+//! Apart from `R: io::Read`, all readers have two additional generic
+//! parameters. It is normally not necessary to change the defaults, but in
+//! some cases this may be relevant.
 //!
-//! ```no_run
-//! use seq_io::fasta::{Reader,Record};
+//! ## Buffer growth policy
 //!
-//! let mut reader = Reader::from_path("seqs.fasta").unwrap();
+//! The parsers avoid allocations and copying as much as possible.
+//! To achieve this, each sequence record must fit into the underlying
+//! buffer as a whole. This may not be possible if dealing with large sequences.
+//! Therefore, the internal buffer of the reader will grow automatically to fit
+//! the whole sequence record again. The buffer may grow until it reaches 1 GiB;
+//! larger records will cause an error.
 //!
-//! let mut n = 0;
-//! let mut sum = 0;
-//! while let Some(record) = reader.next() {
-//!     let record = record.expect("Error reading record");
-//!     for s in record.seq_lines() {
-//!         sum += s.len();
-//!     }
-//!     n += 1;
-//! }
-//! println!("mean sequence length of {} records: {:.1} bp", n, sum as f32 / n as f32);
-//! ```
-//! If the whole sequence is required at once, there is the
-//! [`full_seq`](fasta/struct.RefRecord.html#method.full_seq),
-//! which will only allocate the sequence if there are multiple lines.
-//! use seq_io::fasta::{Reader,OwnedRecord};
+//! The behaviour of buffer growth can be further configured by applying
+//! a different policy. This is documented in the [`policy`](policy) module.
 //!
-//! # Large sequences
+//! ## Position stores
 //!
-//! Due to the design of the parsers, each sequence record must fit into the underlying
-//! buffer as a whole. There are different ways to deal with large sequences:
-//! It is possible configure initial buffer size using `Reader::with_capacity()`.
-//! However, the buffer will also automatically double its size if a record doesn't fit.
-//! How it grows can be configured by applying another policy.
+//! At the core of the different parsers is the same code, which is called
+//! with different parameters. While searching the buffer for sequence records,
+//! the position of the different features is stored. This allows to later
+//! access the header, sequence and quality features directly as slices taken
+//! from the internal buffer. Which positional information needs to be stored
+//! depends on the format. For example, the [`fasta`](crate::fasta) reader
+//! stores the position of every sequence line in order to allow fast iteration
+//! lines later. The [`fastq`](crate::fastq) reader needs to remember the
+//! position of the quality scores, but doesn't need to store information about
+//! multiple lines, which allows for a simpler data structure. In turn,
+//! the [`fastx`](crate::fastx) reader needs to store FASTA lines *and* quality
+//! scores.
 //!
-//! For example, the readers can be configured to return
-//! [`fasta::Error::BufferLimit`](fasta/enum.Error.html#variant.BufferLimit) /
-//! [`fastq::Error::BufferLimit`](fastq/enum.Error.html#variant.BufferLimit)
-//! if buffer size grows too large. This is done using `set_policy()`:
+//! Therefore, all readers have a third generic parameter, which allows
+//! assigning a specific "storage backend" implementing the
+//! [`core::PositionStore`](crate::core::PositionStore) trait. Usually, it is
+//! not necessary to deal with this parameter since each parser has a reasonable
+//! default. The only case where it is changed in this crate is with the trait
+//! object approach implemented in [`fastx::dynamic`](crate::fastx::dynamic).
 //!
-//! ```no_run
-//! use seq_io::fasta::Reader;
-//! use seq_io::policy::DoubleUntilLimited;
-//!
-//! // The buffer doubles its size until 128 MiB, then grows by steps
-//! // of 128 MiB. If it reaches 1 GiB, there will be an error.
-//! let policy = DoubleUntilLimited::new(1 << 30, 1 << 32);
-//! let mut reader = Reader::from_path("input.fasta").unwrap()
-//!     .set_policy(policy);
-//! // (...)
-//! ```
-//! For information on how to create a custom policy, refer to the
-//! [`policy`](policy) module docs.
-//!
-//! # Owned records
-//! Both readers also provide iterators similar to *Rust-Bio*, which return owned data. This
-//! is slower, but make sense, e.g. if the records are collected in to a vector:
-//!
-//! ```no_run
-//! use seq_io::fasta::Reader;
-//!
-//! let mut reader = Reader::from_path("input.fasta").unwrap();
-//!
-//! let records: Result<Vec<_>, _> = reader.records().collect();
-//! ```
-//!
-//! # Parallel processing
-//! Functions for parallel processing can be found in the [`parallel`](parallel/index.html) module
+//! Note that not all combinations of readers and `PositionStore` types have
+//! currently been tested, and some combinations are known to be problematic.
+//! Others just don't make sense. For example, the API does not prohibit
+//! combining `fastq::Reader` with  `fasta::LineStore`, but this will return
+//! everything after the header as sequence, and no quality scores are stored.
+//! TODO: document possible combinations
 
-extern crate buf_redux;
-extern crate memchr;
+pub use self::error::*;
+pub use self::helpers::*;
+pub use self::record::*;
+
+mod helpers;
+mod record;
+#[macro_use]
+mod error;
 
 #[macro_use]
-extern crate serde_derive;
-extern crate serde;
-
-use std::error;
-use std::fmt;
-use std::io;
-
-macro_rules! try_opt {
-    ($expr: expr) => {
-        match $expr {
-            Ok(item) => item,
-            Err(e) => return Some(Err(::std::convert::From::from(e))),
-        }
-    };
-}
-
-macro_rules! unwrap_or {
-    ($expr:expr, $or:block) => {
-        match $expr {
-            Some(item) => item,
-            None => $or,
-        }
-    };
-}
-
+pub mod core;
+#[macro_use]
+pub mod fastx;
 pub mod fasta;
 pub mod fastq;
 pub mod parallel;
 pub mod policy;
-
-/// Remove a final '\r' from a byte slice
-#[inline]
-fn trim_cr(line: &[u8]) -> &[u8] {
-    if let Some((&b'\r', remaining)) = line.split_last() {
-        remaining
-    } else {
-        line
-    }
-}
-
-/// Makes sure the buffer is full after this call (unless EOF reached)
-/// code adapted from `io::Read::read_exact`
-fn fill_buf<R>(
-    reader: &mut buf_redux::BufReader<R, buf_redux::policy::StdPolicy>,
-) -> io::Result<usize>
-where
-    R: io::Read,
-{
-    let initial_size = reader.buffer().len();
-    let mut num_read = 0;
-    while initial_size + num_read < reader.capacity() {
-        match reader.read_into_buf() {
-            Ok(0) => break,
-            Ok(n) => num_read += n,
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(num_read)
-}
+pub mod prelude;

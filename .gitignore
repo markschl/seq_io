@@ -6,3 +6,4 @@ Cargo.lock
 
 .Rhistory
 .DS_Store
+.vscode/

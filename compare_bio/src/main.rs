@@ -1,11 +1,6 @@
 
-extern crate seq_io;
-extern crate bio;
-
-use seq_io::fasta::Record;
-use seq_io::fastq::Record as FqRecord;
-
 use std::env::args;
+use seq_io::prelude::*;
 
 fn main() {
     for filename in args().skip(1) {

@@ -1,22 +1,17 @@
-#![allow(unused_variables)]
-
-extern crate bio;
-extern crate rand;
-extern crate rand_isaac;
-extern crate seq_io;
 #[macro_use]
 extern crate criterion;
 
-use criterion::Criterion;
-use rand::distributions::Normal;
+use criterion::{black_box, BenchmarkId, Criterion, Throughput};
 use rand::{Rng, SeedableRng};
+use rand_distr::Normal;
 use rand_isaac::isaac64::Isaac64Rng;
 use std::iter::repeat;
 
-use seq_io::fasta;
+use seq_io::prelude::*;
+use seq_io::{fasta, fastx};
 
 /// number of records for all benchmarks
-const N: usize = 10_000;
+const N: usize = 30_000;
 const SEQLEN_SD_FRAC: f64 = 0.2;
 
 /// generates 'nrecords' FASTA records with given properties
@@ -36,8 +31,8 @@ fn gen_fasta(
     rec.extend(repeat(b'd').take(desc_len));
     rec.extend(&newline);
 
-    let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC);
-    let mut rng = Isaac64Rng::from_seed([5; 32]);
+    let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC).unwrap();
+    let rng = Isaac64Rng::from_seed([5; 32]);
 
     rng.sample_iter(&norm)
         .map(|slen| {
@@ -76,22 +71,17 @@ fn with_seqlen(nrecords: usize, seq_len: usize, break_seq: Option<usize>, cr: bo
 }
 
 macro_rules! bench {
-    ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr, $data:ident, $code:block) => {
-        let data = with_seqlen(N, $seqlen, $lbreak, false);
-        let name = format!("fasta {} {}", $name, data.len());
-        $c.bench_function(&name, move |b| {
-            b.iter(|| {
-                let $data = data.as_slice();
-                $code
-            })
-        });
+    ($c:expr, $name:expr, $data:ident, $code:block) => {
+        let name = format!("fasta {}", $name);
+        let id = BenchmarkId::new(name, 0);
+        $c.bench_with_input(id, $data, move |b, $data| b.iter(|| $code));
     };
 }
 
 macro_rules! fasta {
-    ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr, $rec:ident, $code:block) => {
-        bench!($c, $name, $seqlen, $lbreak, data, {
-            let mut reader = fasta::Reader::new(data);
+    ($c:expr, $name:expr, $data:ident, $rec:ident, $code:block) => {
+        bench!($c, $name, $data, {
+            let mut reader = fasta::Reader::new($data);
             while let Some(r) = reader.next() {
                 let $rec = r.unwrap();
                 $code
@@ -100,20 +90,47 @@ macro_rules! fasta {
     };
 }
 
-macro_rules! fasta_owned {
-    ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr) => {
-        bench!($c, $name, $seqlen, $lbreak, data, {
-            for rec in fasta::Reader::new(data).into_records() {
-                let _ = rec.unwrap();
+macro_rules! fasta_single {
+    ($c:expr, $name:expr, $data:ident, $Store:ty, $rec:ident, $code:block) => {
+        bench!($c, $name, $data, {
+            let mut reader: fasta::single_line::Reader<_, _, $Store> =
+                fasta::single_line::Reader::new($data).set_store();
+            while let Some(r) = reader.next() {
+                let $rec = r.unwrap();
+                $code
+            }
+        });
+    };
+}
+
+macro_rules! fastx {
+    ($c:expr, $name:expr, $data:ident, $rec:ident, $code:block) => {
+        bench!($c, $name, $data, {
+            let mut reader = fastx::Reader::new($data);
+            while let Some(r) = reader.next() {
+                let $rec = r.unwrap();
+                $code
+            }
+        });
+    };
+}
+
+macro_rules! fastx_dynamic {
+    ($c:expr, $name:expr, $data:ident, $rec:ident, $code:block) => {
+        bench!($c, $name, $data, {
+            let mut reader = fastx::dynamic::reader($data, false).unwrap().unwrap();
+            while let Some(r) = reader.next_fastx() {
+                let $rec = r.unwrap();
+                $code
             }
         });
     };
 }
 
 macro_rules! bio {
-    ($c:expr, $name:expr, $seqlen:expr, $lbreak:expr, $rec:ident, $code:block) => {
-        bench!($c, $name, $seqlen, $lbreak, data, {
-            let reader = bio::io::fasta::Reader::new(data);
+    ($c:expr, $name:expr, $data:ident, $rec:ident, $code:block) => {
+        bench!($c, $name, $data, {
+            let reader = bio::io::fasta::Reader::new($data);
             for r in reader.records() {
                 let $rec = r.unwrap();
                 $code
@@ -123,102 +140,199 @@ macro_rules! bio {
 }
 
 fn readers(c: &mut Criterion) {
-    fasta!(c, "seq_io 200 ", 200, None, r, {});
-    fasta!(c, "seq_io 500 ", 500, None, r, {});
-    fasta!(c, "seq_io 500 multiline", 500, Some(100), r, {});
-    fasta_owned!(c, "seq_io 500 owned,iter", 500, None);
-    fasta_owned!(c, "seq_io 500 owned,iter,multiline", 500, Some(100));
-    fasta!(c, "seq_io 500 owned,multiline", 500, Some(100), r, {
-        let _ = r.to_owned_record();
-    });
-    fasta!(c, "seq_io 500 owned", 500, None, r, {
-        let _ = r.to_owned_record();
-    });
-    fasta!(c, "seq_io 1000 ", 1000, None, r, {});
+    let data = with_seqlen(N, 300, None, false);
+    reader_bench(c, "fasta", &data, true);
 
-    bio!(c, "bio 200 owned", 200, None, r, {});
-    bio!(c, "bio 500 owned", 500, None, r, {});
-    bio!(c, "bio 500 owned,multiline", 500, Some(100), r, {});
-    bio!(c, "bio 1000 owned", 1000, None, r, {});
+    let data = with_seqlen(N, 300, Some(80), false);
+    reader_bench(c, "fasta_multiline", &data, false);
+}
 
-    bench!(c, "seq_io 500 recordset,parallel", 500, None, data, {
+fn reader_bench(c: &mut Criterion, name: &str, data: &[u8], single_line: bool) {
+    let mut group = c.benchmark_group(name);
+    group.throughput(Throughput::Bytes(data.len() as u64));
+
+    // simple parsing
+    fasta!(group, "seqio borrow", data, r, {
+        black_box(r);
+    });
+    fastx!(group, "seqio_fastx borrow", data, r, {
+        black_box(r);
+    });
+    fastx_dynamic!(group, "seqio_fastx_dynamic borrow", data, r, {
+        black_box(r);
+    });
+
+    if single_line {
+        fasta_single!(
+            group,
+            "seqio_single_linestore borrow",
+            data,
+            fasta::LineStore,
+            r,
+            {
+                black_box(r);
+            }
+        );
+        fasta_single!(
+            group,
+            "seqio_single borrow",
+            data,
+            fasta::single_line::RangeStore,
+            r,
+            {
+                black_box(r);
+            }
+        );
+    }
+
+    // owned
+    bench!(group, "seqio_clone_into owned", data, {
+        let mut reader = fasta::Reader::new(data);
+        let mut owned = fasta::OwnedRecord::default();
+        while let Some(res) = reader.next() {
+            let rec = res.unwrap();
+            rec.clone_into_owned(&mut owned);
+        }
+    });
+    bio!(group, "bio owned", data, r, {
+        black_box(r);
+    });
+    fasta!(group, "seqio owned", data, r, {
+        let r = r.to_owned_record();
+        black_box(r);
+    });
+    bench!(group, "seqio_records owned", data, {
+        for res in fasta::Reader::new(data).into_records() {
+            let rec = res.unwrap();
+            black_box(rec);
+        }
+    });
+
+    // access sequence
+    fasta!(group, "seqio seq", data, r, {
+        let s: &[u8] = &r.full_seq();
+        black_box(s);
+    });
+    bench!(group, "seqio_seq_given seq", data, {
+        let mut reader = seq_io::fasta::Reader::new(data);
+        let mut seq = vec![];
+        while let Some(res) = reader.next() {
+            let rec = res.unwrap();
+            rec.full_seq_given(|| &mut seq);
+        }
+    });
+    fastx!(group, "seqio_fastx seq", data, r, {
+        let s: &[u8] = &r.full_seq();
+        black_box(s);
+    });
+    bio!(group, "bio seq", data, r, {
+        let s = r.seq();
+        black_box(s);
+    });
+
+    // iterate sequence
+    fasta!(group, "seqio seq_iter", data, r, {
+        for s in r.seq_lines() {
+            black_box(s);
+        }
+    });
+    fastx!(group, "seqio_fastx seq_iter", data, r, {
+        for s in r.seq_lines() {
+            black_box(s);
+        }
+    });
+    fastx_dynamic!(group, "seqio_fastx_dynamic seq_iter", data, r, {
+        for s in r.seq_lines() {
+            black_box(s);
+        }
+    });
+
+    // get sequence ID
+    fasta!(group, "seqio_bytes id", data, r, {
+        let id = r.id_bytes();
+        black_box(id);
+    });
+    fasta!(group, "seqio_str id", data, r, {
+        let id = r.id().unwrap();
+        black_box(id);
+    });
+
+    // read into record sets without parallelism
+    bench!(group, "seqio recordset", data, {
+        let mut reader = fasta::Reader::new(data);
+        let mut rset = fasta::RecordSet::default();
+        while reader.read_record_set(&mut rset).unwrap() {
+            for r in &rset {
+                black_box(r);
+            }
+        }
+    });
+
+    // parallel
+    bench!(group, "seqio_rset parallel", data, {
         let reader = fasta::Reader::new(data);
-        seq_io::parallel::read_parallel(
+        seq_io::parallel::read_process_recordsets(
             reader,
             2,
             2,
-            |rset| {
-                for _ in &*rset {}
+            |rset, _| {
+                for r in &*rset {
+                    black_box(r);
+                }
             },
-            |rsets| {
+            |mut rsets| {
                 while let Some(result) = rsets.next() {
-                    let (rset, _) = result.unwrap();
-                    for _ in &*rset {}
+                    let (rset, _): (_, &mut ()) = result.unwrap();
+                    for r in &*rset {
+                        black_box(r);
+                    }
                 }
             },
         );
     });
 
-    bench!(c, "seq_io 500 records,parallel", 500, None, data, {
+    bench!(group, "seqio_record parallel", data, {
         let reader = fasta::Reader::new(data);
-        seq_io::parallel::parallel_fasta::<_, (), _, _, ()>(reader, 2, 2, |_, _| {}, |_, _| None)
-            .unwrap();
-    });
-
-    // read into record sets without parallelism
-
-    bench!(c, "seq_io 500 recordset", 500, None, data, {
-        let mut reader = fasta::Reader::new(data);
-        let mut rset = fasta::RecordSet::default();
-        while let Some(result) = reader.read_record_set(&mut rset) {
-            result.unwrap();
-            for _ in &rset {}
-        }
-    });
-
-    fasta!(c, "seq_io 500 seq", 500, None, r, {
-        for _ in r.seq_lines() {}
-    });
-
-    bio!(c, "bio 500 seq,owned", 500, None, r, {
-        let _ = r.seq();
+        seq_io::parallel::read_process_fasta_records::<_, _, _, _, (), ()>(
+            reader,
+            2,
+            2,
+            |r, _| {
+                black_box(r);
+            },
+            |r, _| {
+                black_box(r);
+                None
+            },
+        )
+        .unwrap();
     });
 }
 
 // compare different buffer capacities
 
-macro_rules! bench_cap {
-    ($c:expr, $name:expr, $seqlen:expr, $cap:expr, $n:expr) => {
-        bench!($c, $name, $seqlen, None, data, {
-            let mut reader = fasta::Reader::with_capacity(data, $cap);
-            while let Some(r) = reader.next() {
-                let _ = r.unwrap();
-            }
-        });
-    };
-}
-
 fn readers_cap(c: &mut Criterion) {
-    bench_cap!(c, "seq_io_cap 200 8ki", 200, 1 << 13, N);
-    bench_cap!(c, "seq_io_cap 200 16ki", 200, 1 << 14, N);
-    bench_cap!(c, "seq_io_cap 200 32ki", 200, 1 << 15, N);
-    bench_cap!(c, "seq_io_cap 200 64ki", 200, 1 << 16, N);
-    bench_cap!(c, "seq_io_cap 200 128ki", 200, 1 << 17, N);
-    bench_cap!(c, "seq_io_cap 200 256ki", 200, 1 << 18, N);
+    let k = 1024;
+    let caps = [8 * k, 16 * k, 32 * k, 64 * k, 128 * k, 256 * k];
+    let lengths = [100, 250, 500, 1000, 10000];
 
-    bench_cap!(c, "seq_io_cap 1000 8ki", 1000, 1 << 13, N);
-    bench_cap!(c, "seq_io_cap 1000 16ki", 1000, 1 << 14, N);
-    bench_cap!(c, "seq_io_cap 1000 32ki", 1000, 1 << 15, N);
-    bench_cap!(c, "seq_io_cap 1000 64ki", 1000, 1 << 16, N);
-    bench_cap!(c, "seq_io_cap 1000 128ki", 1000, 1 << 17, N);
-    bench_cap!(c, "seq_io_cap 1000 256ki", 1000, 1 << 18, N);
+    for &seqlen in &lengths {
+        let n = N * 250 / seqlen;
+        let input = with_seqlen(n, seqlen, None, false);
+        let input = input.as_slice();
+        let mut group = c.benchmark_group(format!("fasta_cap_{}", seqlen));
+        group.throughput(Throughput::Bytes(input.len() as u64));
 
-    bench_cap!(c, "seq_io_cap 10000 8ki", 10000, 1 << 13, N / 10);
-    bench_cap!(c, "seq_io_cap 10000 16ki", 10000, 1 << 14, N / 10);
-    bench_cap!(c, "seq_io_cap 10000 32ki", 10000, 1 << 15, N / 10);
-    bench_cap!(c, "seq_io_cap 10000 64ki", 10000, 1 << 16, N / 10);
-    bench_cap!(c, "seq_io_cap 10000 128ki", 10000, 1 << 17, N / 10);
-    bench_cap!(c, "seq_io_cap 10000 256ki", 10000, 1 << 18, N / 10);
+        for &cap in &caps {
+            let name = format!("{} {}k", seqlen, cap);
+            bench!(group, name, input, {
+                let mut reader = seq_io::fasta::Reader::with_capacity(input, cap);
+                while let Some(r) = reader.next() {
+                    let _ = r.unwrap();
+                }
+            });
+        }
+    }
 }
 
 criterion_group!(benches, readers, readers_cap);

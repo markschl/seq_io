@@ -1,9 +1,9 @@
 [package]
 name = "compare_bio"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["markschl"]
-
+edition = "2018"
 
 [dependencies]
-bio = "^0.14"
+bio = "0.32"
 seq_io = { path = ".." }

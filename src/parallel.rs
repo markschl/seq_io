@@ -1,59 +1,43 @@
-//! Experiments with parallel processing
+//! Functions for parallel processing of record sets and records.
 //!
-//! The provided functions focus on the possibility of
-//! returning results while the parser proceeds. Sequences are processesd in
-//! batches (`RecordSet`) because sending across channels has a performance
-//! impact. FASTA/FASTQ records can be accessed in both the 'worker' function and
-//! (after processing) a function running in the main thread.
+//! Sequences are read and processed in batches (`RecordSet`) because sending
+//! data across channels has a performance impact. The process works as follows:
 //!
-//! # Search first occurrence of a sequence pattern
-//!
-//! ```no_run
-//! use seq_io::fastq::{Reader,Record};
-//! use seq_io::parallel::read_parallel;
-//!
-//! let reader = Reader::from_path("seqs.fastq").unwrap();
-//!
-//! read_parallel(reader, 4, 2, |record_set| {
-//!     // this function does the heavy work
-//!     for (i, record) in record_set.into_iter().enumerate() {
-//!         // this is not very efficient code, just for demonstration
-//!         if let Some(pos) = record.seq().windows(3).position(|s| s == b"AAA") {
-//!             return Some((i, pos));
-//!         }
-//!     }
-//!     None
-//! }, |record_sets| {
-//!     // This function runs in the main thread. It provides a streaming iterator over
-//!     // record sets and the corresponding return values from the worker function
-//!     // (not necessarily in the same order as in the file)
-//!     while let Some(result) = record_sets.next() {
-//!         let (record_set, found) = result.unwrap();
-//!         if let Some((i, pos)) = found {
-//!             let record = record_set.into_iter().nth(i).unwrap();
-//!             println!("Found AAA in record {} at position {}", record.id().unwrap(), pos);
-//!              // this will also stop the worker threads, although with some delay
-//!             return;
-//!         }
-//!     }
-//! });
-//! ```
+//! * Sequence parsing is done in a background thread
+//! * Record sets are sent to worker threads, where expensive operations take
+//!   place (e.g. sequence analysis).
+//! * The results are sent to the main thread along with the record sets.
+//! * The record sets are recycled by sending them back to the background
+//!   reader.
 //!
 //! # Per-record processsing
-//! The `parallel_fasta` / `parallel_fastq` functions are designed to efficiently pass
-//! results for **each record** to the main thread without having to care about record sets.
+//!
+//! The easiest to use are the functions, which operate directly on sequence
+//! records without having to deal with record sets:
+//!
+//! * [`read_process_fasta_records`](read_process_fasta_records)
+//! * [`read_process_fastq_records`](read_process_fastq_records)
+//! * [`read_process_fastx_records`](read_process_fastx_records)
+//!
+//! They are specific for the given sequence format, but it is possible to
+//! generate functions for other types using the
+//! [`parallel_record_impl`](parallel_record_impl) macro.
+//!
+//! ## Example
+//!
 //! This example filters sequences by the occurrence of a pattern:
 //!
 //! ```no_run
+//! use seq_io::prelude::*;
 //! use seq_io::fastq::{Reader,Record};
-//! use seq_io::parallel::parallel_fastq;
+//! use seq_io::parallel::read_process_fastq_records;
 //! use std::fs::File;
 //! use std::io::BufWriter;
 //!
 //! let reader = Reader::from_path("seqs.fastq").unwrap();
 //! let mut writer = BufWriter::new(File::create("filtered.fastq").unwrap());
 //!
-//! parallel_fastq(reader, 4, 2,
+//! read_process_fastq_records(reader, 4, 2,
 //!     |record, found| { // runs in worker
 //!         *found = record.seq().windows(3).position(|s| s == b"AAA").is_some();
 //!     },
@@ -63,111 +47,160 @@
 //!         }
 //!         // Some(value) will stop the reader, and the value will be returned.
 //!         // In the case of never stopping, we need to give the compiler a hint about the
-//!         // type parameter, thus the special 'turbofish' notation is needed,
-//!         // hoping on progress here: https://github.com/rust-lang/rust/issues/27336
+//!         // type parameter, thus the special 'turbofish' notation is needed.
 //!         None::<()>
 //! }).unwrap();
 //! ```
+//!
+//! # Record set processing
+//!
+//! It is still possible to directly work with record sets using the following
+//! generic functions:
+//!
+//! * [`read_process_recordsets`](read_process_recordsets)
+//! * [`read_process_recordsets_init`](read_process_recordsets_init)
+//!
+//! ## Example
+//!
+//! This example searches for the first occurrence of a sequence pattern and
+//! then stops the parser.
+//!
+//! ```no_run
+//! use seq_io::prelude::*;
+//! use seq_io::fastq;
+//! use seq_io::parallel::read_process_recordsets;
+//!
+//! let reader = fastq::Reader::from_path("seqs.fastq").unwrap();
+//!
+//! read_process_recordsets(reader, 4, 2,
+//!     |record_set, position| {
+//!         // This function does the heavy work.
+//!         // The code is not necessarily very efficient, just for demonstration.
+//!         for (i, record) in record_set.into_iter().enumerate() {
+//!             if let Some(pos) = record.seq().windows(3).position(|s| s == b"AAA") {
+//!             *position = Some((i, pos));
+//!             }
+//!         }
+//!         *position = None;
+//!     }, |mut record_sets| {
+//!         // This function runs in the main thread. It provides a streaming iterator over
+//!         // record sets and the corresponding return values from the worker function
+//!         // (not necessarily in the same order as in the file)
+//!         while let Some(result) = record_sets.next() {
+//!             let (record_set, position) = result?;
+//!             if let Some(&(i, pos)) = position.as_ref() {
+//!                 let record = record_set.into_iter().nth(i).unwrap();
+//!                 println!("Found AAA in record {} at position {}", record.id().unwrap(), pos);
+//!                 return Ok(());
+//!             }
+//!         }
+//!         // Here, we need to give the compiler a type hint about the returned
+//!         // result, since it is not smart enough to infer it.
+//!         // In real-world programs, this may be less of an issue because the
+//!         // returned result type is often known.
+//!         Ok::<_, fastq::Error>(())
+//!     }
+//! ).expect("FASTQ reading error");
+//! ```
 
-use std::io;
-
-extern crate crossbeam;
-extern crate scoped_threadpool;
-
-use std::marker::PhantomData;
+use crate::{fasta, fastq, fastx};
 use std::sync::mpsc;
 
-pub trait Reader {
-    type DataSet: Send;
+/// A simple trait required to be implemented for readers fed into the
+/// functions in this module.
+pub trait RecordSetReader {
+    type RecordSet: Send;
     type Err: Send;
-    fn fill_data(&mut self, record: &mut Self::DataSet) -> Option<Result<(), Self::Err>>;
+    fn fill_data(&mut self, record: &mut Self::RecordSet) -> Result<bool, Self::Err>;
 }
 
-pub fn read_parallel<R, O, W, F, Out>(
+/// This function reads record sets and processes them in parallel threads.
+///
+/// * It takes a [`RecordSetReader`](RecordSetReader), which reads data into
+///   record sets in a background thread.
+/// * These are then sent to `n_workers` worker threads, where the heavy work
+///   is done in the `work` closure.
+/// * Once ready, the record sets and work results are sent to the main thread
+///   and provided to the `func` closure. The won't necessarily arrive in the
+///   same order as they were read.
+pub fn read_process_recordsets<R, W, F, O, Out>(
     reader: R,
-    n_threads: u32,
+    n_workers: u32,
     queue_len: usize,
     work: W,
     func: F,
 ) -> Out
 where
-    R: Reader + Send,
-    R::DataSet: Default,
+    R: RecordSetReader + Send,
+    R::RecordSet: Default + Send,
     O: Default + Send,
-    W: Send + Sync + Fn(&mut R::DataSet) -> O,
-    F: FnMut(&mut ParallelRecordsets<R::DataSet, R::Err, O>) -> Out,
+    W: Send + Sync + Fn(&mut R::RecordSet, &mut O),
+    F: FnOnce(ParallelDataSets<R::RecordSet, R::Err, O>) -> Out,
 {
-    read_parallel_init::<_, (), _, (), _, _, (), _, _, Out>(
-        n_threads,
-        queue_len,
-        || Ok::<_, ()>(reader),
-        || Ok::<_, ()>(R::DataSet::default()),
-        work,
-        func,
-    )
-    .unwrap()
+    read_process_recordsets_init(|| Ok::<_, ()>(reader), n_workers, queue_len, work, func).unwrap()
 }
 
-/// This function allows initiating the reader and datasets using a closure.
-/// This is more flexible and allows readers not to be `Send`
-pub fn read_parallel_init<R, E, Ri, Er, O, Di, Ed, W, F, Out>(
-    n_threads: u32,
-    queue_len: usize,
+/// Like [`read_process_recordsets`](read_process_recordsets), but additionally
+/// allows initiating the reader in the background thread using a closure
+/// (`reader_init`).
+/// This is useful for readers, which don't implement `Send`.
+/// The `reader_init` closure has to return a result. Errors are returned from
+/// the main function witout being mixed with reading errors. This may lead to
+/// nested `Result` being returned if the `func` closure returns `Result`.
+pub fn read_process_recordsets_init<R, Ri, Ei, W, F, O, Out>(
     reader_init: Ri,
-    mut dataset_init: Di,
+    n_workers: u32,
+    queue_len: usize,
     work: W,
     func: F,
-) -> Result<Out, E>
+) -> Result<Out, Ei>
 where
-    R: Reader,
-    Ri: Send + FnOnce() -> Result<R, Er>,
-    Er: Send,
-    E: From<Er> + From<Ed>,
-    O: Send,
-    Di: Send + Sync + FnMut() -> Result<R::DataSet, Ed>,
-    W: Send + Sync + Fn(&mut R::DataSet) -> O,
-    F: FnOnce(&mut ParallelRecordsets<R::DataSet, R::Err, O>) -> Out,
+    R: RecordSetReader,
+    Ri: Send + FnOnce() -> Result<R, Ei>,
+    R::RecordSet: Default + Send,
+    O: Default + Send,
+    W: Send + Sync + Fn(&mut R::RecordSet, &mut O),
+    F: FnOnce(ParallelDataSets<R::RecordSet, R::Err, O>) -> Out,
+    Ei: Send,
 {
     let (done_send, done_recv) = mpsc::sync_channel(queue_len);
-    let (empty_send, empty_recv): (mpsc::SyncSender<R::DataSet>, _) = mpsc::sync_channel(queue_len);
+    let (empty_send, empty_recv) = mpsc::sync_channel(queue_len);
 
     crossbeam::scope(|scope| {
-        let handle = scope.spawn::<_, Result<(), Er>>(move |_| {
+        let handle = scope.spawn::<_, Result<(), Ei>>(move |_| {
             let mut reader = reader_init()?;
 
-            let mut pool = scoped_threadpool::Pool::new(n_threads);
+            let mut pool = scoped_threadpool::Pool::new(n_workers);
 
             pool.scoped(|pool_scope| {
                 let work = &work;
 
                 loop {
-                    // recycle an old DataSet sent back after use
-                    let mut data = if let Ok(r) = empty_recv.recv() {
+                    // recycle an old RecordSet sent back after use
+                    let (mut data, mut out) = if let Ok(r) = empty_recv.recv() {
                         r
                     } else {
-                        // ParallelRecordsets dropped -> stop
+                        // ParallelDataSets dropped -> stop
                         return;
                     };
 
                     let done_send = done_send.clone();
 
-                    if let Some(res) = reader.fill_data(&mut data) {
-                        match res {
-                            Ok(_) => {
-                                // expensive work carried out by func()
-                                pool_scope.execute(move || {
-                                    let out = work(&mut data);
-
-                                    done_send.send(Some(Ok((data, out)))).ok();
-                                });
-                            }
-                            Err(e) => {
-                                done_send.send(Some(Err(e))).ok();
+                    match reader.fill_data(&mut data) {
+                        Ok(has_data) => {
+                            if !has_data {
                                 break;
                             }
+                            // expensive work carried out by func()
+                            pool_scope.execute(move || {
+                                work(&mut data, &mut out);
+                                done_send.send(Some(Ok((data, out)))).ok();
+                            });
                         }
-                    } else {
-                        break;
+                        Err(e) => {
+                            done_send.send(Some(Err(e))).ok();
+                            break;
+                        }
                     }
                 }
 
@@ -179,19 +212,21 @@ where
         });
 
         for _ in 0..queue_len {
-            if empty_send.send(dataset_init()?).is_err() {
+            if empty_send
+                .send((R::RecordSet::default(), O::default()))
+                .is_err()
+            {
                 break;
             }
         }
 
-        let mut rsets = ParallelRecordsets {
+        let dsets: ParallelDataSets<R::RecordSet, R::Err, O> = ParallelDataSets {
             empty_send,
             done_recv,
-            current_recordset: dataset_init()?,
+            current_recordset: (R::RecordSet::default(), O::default()),
         };
 
-        let out = func(&mut rsets);
-        ::std::mem::drop(rsets);
+        let out = func(dsets);
 
         handle.join().unwrap()?;
         Ok(out)
@@ -199,30 +234,32 @@ where
     .unwrap()
 }
 
-pub struct ParallelRecordsets<R, E, O>
+pub struct ParallelDataSets<D, E, O = ()>
 where
-    R: Send,
+    D: Send,
     E: Send,
     O: Send,
 {
-    empty_send: mpsc::SyncSender<R>,
-    done_recv: mpsc::Receiver<Option<Result<(R, O), E>>>,
-    current_recordset: R,
+    empty_send: mpsc::SyncSender<(D, O)>,
+    done_recv: mpsc::Receiver<Option<Result<(D, O), E>>>,
+    current_recordset: (D, O),
 }
 
-impl<R, E, O> ParallelRecordsets<R, E, O>
+impl<D, E, O> ParallelDataSets<D, E, O>
 where
-    R: Send,
+    D: Send,
     E: Send,
     O: Send,
 {
-    pub fn next(&mut self) -> Option<Result<(&mut R, O), E>> {
+    /// Returns a tuple of the next processed record set and processing results,
+    /// if present.
+    pub fn next(&mut self) -> Option<Result<(&mut D, &mut O), E>> {
         self.done_recv.recv().unwrap().map(move |result| {
             match result {
-                Ok((r, o)) => {
-                    let prev_rset = ::std::mem::replace(&mut self.current_recordset, r);
+                Ok(d) => {
+                    let prev_rset = std::mem::replace(&mut self.current_recordset, d);
                     self.empty_send.send(prev_rset).ok(); // error: channel closed is not a problem, happens after calling stop()
-                    Ok((&mut self.current_recordset, o))
+                    Ok((&mut self.current_recordset.0, &mut self.current_recordset.1))
                 }
                 Err(e) => Err(e),
             }
@@ -230,217 +267,201 @@ where
     }
 }
 
+/// Allows generating functions equivalent to the `read_process_xy_records`
+/// functions in this crate for your own types. This is rather a workaround
+/// because the generic approach ([`read_process_records_init`](read_process_records_init))
+/// does currently not work.
+///
+/// * `$format`: String specifying the name of the sequence format
+///   (for genrated documentation)
+/// * `$name`: name of the generated function
+/// * `$name_init`: name of another generated function, which takes a closure
+///   initializing the readers in the background thread.
+/// * `$RecordSet`: record set type (see [`RecordSetReader::RecordSet`](RecordSetReader::RecordSet)).
+///   In addition to the trait requirements, `&$RecordSet` needs to implement
+///   `IntoIterator<Item=$Record>`.
+/// * `$Record`: record type returned by the record set iterator.
+/// * `$Error`: reading error type ([`RecordSetReader::Err`](RecordSetReader::Err))
 #[macro_export]
 macro_rules! parallel_record_impl {
-    ($name:ident, $name_init:ident, $io_r:tt, $rdr:ty, $dataset:ty, $record:ty, $err:ty) => {
-        /// Function reading records in a different thread.
-        /// processing them in another worker thread
-        /// and finally returning the results to the main thread.
+    ($format:expr, $name:ident, $name_init:ident, 
+        $RecordSet:ty, $Record:ty, $Error:ty) => {
+        _parallel_record_impl!(
+            $format,
+            $name,
+            $name_init,
+            $RecordSet,
+            $Record,
+            $Error,
+            concat!("[`", stringify!($name), "`](", stringify!($name), ")")
+        );
+    };
+}
+
+macro_rules! _parallel_record_impl {
+    ($format:expr, $name:ident, $name_init:ident,
+        $RecordSet:ty, $Record:ty, $Error:ty,
+        $name_link:expr) => {
+
+        /// This function wraps [`read_process_recordsets`](read_process_recordsets),
+        /// hiding the complexity related to record sets and allowing it to
+        /// directly work on
+        #[doc = $format]
+        /// sequence records.
         ///
-        /// The output is passed around between threads, allowing
-        /// allocations to be 'recycled'. This also means, that the
-        /// data must implement `Default`, and data handled to the 'work'
-        /// function will receive 'old' data from earlier records which
-        /// has to be overwritten.
-        pub fn $name<$io_r, D, W, F, Out>(
-            reader: $rdr,
-            n_threads: u32,
+        /// Apart from this, the process is similar:
+        ///
+        /// * The records are read (as part of record sets) in a background
+        ///   thread.
+        /// * Then they are sent to `n_workers` worker threads. Work is done
+        ///   in the `work` closure supplied to this function.
+        /// * Once ready, records an results are sent to the main thread,
+        ///   where they are supplied to the `func` closure. The order of the
+        ///   records may be different.
+        pub fn $name<R, S, W, F, O, Out>(
+            reader: R,
+            n_workers: u32,
             queue_len: usize,
             work: W,
-            mut func: F,
-        ) -> Result<Option<Out>, $err>
+            func: F,
+        ) -> Result<Option<Out>, R::Err>
         where
-            $io_r: io::Read + Send,
-            D: Default + Send,
-            W: Send + Sync + Fn($record, &mut D),
-            F: FnMut($record, &mut D) -> Option<Out>,
+            R: RecordSetReader<RecordSet = $RecordSet, Err = $Error> + Send,
+            O: Default + Send,
+            S: crate::core::PositionStore,
+            W: Send + Sync + Fn($Record, &mut O),
+            F: FnMut($Record, &mut O) -> Option<Out>,
         {
-            $name_init(
-                n_threads,
-                queue_len,
-                || Ok::<_, $err>(reader),
-                || Ok::<_, $err>(D::default()),
-                || Ok::<_, $err>(()),
-                |record, record_out, _| work(record, record_out),
-                |record, record_out, _| func(record, record_out),
+            $name_init::<_, _, _, _, _, _, _, $Error>(
+                || Ok(reader), n_workers, queue_len, work, func
             )
         }
 
-        /// More customisable function doing per-record processing with
-        /// closures for initialization and moer options.
+        /// Like
+        #[doc = $name_link]
+        ///, but instead of a [`RecordSetReader`](RecordSetReader), it takes a
+        /// closure (`reader_init`) returning an `RecordSetReader` instance.
+        /// This allows using readers that don't  implement `Send`.
+        /// `reader_init` should return a result. The error type needs to
+        /// implement `From<RecordSetReader::Err>`
         ///
-        /// The reader is lazily initialized in a closure (`reader_init`) and therefore does not
-        /// need to implement `Send`. There is also an initializer for the output data
-        /// for each record, therefore the type is not required to implement.
-        /// `Default` (`record_data_init`). Finally, each record set can have
-        /// its own data (kind of thread local data, but actually passed around
-        /// with the record set) (`rset_data_init`).
-        pub fn $name_init<Ri, E, $io_r, Er, Di, D, Ed, Si, S, Es, W, F, Out>(
-            n_threads: u32,
-            queue_len: usize,
+        pub fn $name_init<R, Ri, S, W, F, O, Out, E>(
             reader_init: Ri,
-            record_data_init: Di,
-            rset_data_init: Si,
+            n_workers: u32,
+            queue_len: usize,
             work: W,
             mut func: F,
         ) -> Result<Option<Out>, E>
         where
-            $io_r: io::Read,
-            Ri: Send + FnOnce() -> Result<$rdr, Er>,
-            Er: Send,
-            Ed: Send,
-            E: From<$err> + From<Er> + From<Ed> + From<Es>,
-            Di: Fn() -> Result<D, Ed> + Send + Sync,
-            D: Send,
-            Si: Fn() -> Result<S, Es> + Send + Sync,
-            S: Send,
-            W: Send + Sync + Fn($record, &mut D, &mut S),
-            F: FnMut($record, &mut D, &mut S) -> Option<Out>,
+            R: RecordSetReader<RecordSet = $RecordSet, Err = $Error>,
+            Ri: Send + FnOnce() -> Result<R, E>,
+            O: Default + Send,
+            S: crate::core::PositionStore,
+            W: Send + Sync + Fn($Record, &mut O),
+            F: FnMut($Record, &mut O) -> Option<Out>,
+            E: Send + From<R::Err>,
         {
-            $crate::parallel::read_parallel_init::<_, E, _, _, _, _, Es, _, _, _>(
-                n_threads,
+            read_process_recordsets_init(
+                reader_init,
+                n_workers,
                 queue_len,
-                || reader_init().map($crate::parallel::ReusableReader::<$rdr, (Vec<D>, S)>::new),
-                || rset_data_init().map(|d| (<$dataset>::default(), (vec![], d))),
-                |&mut (ref mut recordset, (ref mut out, ref mut rset_data))| {
-                    let mut record_iter = recordset.into_iter();
-                    //let &mut (ref mut out, ref mut rset_data): &mut (Vec<D>, Option<S>) = &mut d.1;
-                    for mut d in out.iter_mut().zip(&mut record_iter) {
-                        work(d.1, &mut d.0, rset_data);
+                |rset: &mut $RecordSet, output: &mut Vec<O>| {
+                    let mut record_iter = rset.into_iter();
+                    for (out, record) in output.iter_mut().zip(&mut record_iter) {
+                        work(record, out);
                     }
                     for record in record_iter {
-                        out.push(record_data_init()?);
-                        work(record, out.last_mut().unwrap(), rset_data);
+                        output.push(O::default());
+                        work(record, output.last_mut().unwrap());
                     }
-                    Ok::<_, Ed>(())
                 },
-                |records| {
+                |mut records| {
                     while let Some(result) = records.next() {
-                        let (r, res) = result?;
-                        res?;
-                        let &mut (ref records, (ref mut out, ref mut rset_data)) = r;
-                        for x in records.into_iter().zip(out.iter_mut()) {
-                            if let Some(out) = func(x.0, x.1, rset_data) {
+                        let (rset, out) = result?;
+                        for (record, o) in rset.into_iter().zip(out.iter_mut()) {
+                            if let Some(out) = func(record, o) {
                                 return Ok(Some(out));
                             }
                         }
                     }
                     Ok(None)
                 },
-            )?
+            ).and_then(From::from)
         }
     };
 }
 
 parallel_record_impl!(
-    parallel_fasta,
-    parallel_fasta_init,
-    R,
-    fasta::Reader<R>,
-    fasta::RecordSet,
-    fasta::RefRecord,
+    "FASTA",
+    read_process_fasta_records,
+    read_process_fasta_records_init,
+    fasta::RecordSet<S>,
+    fasta::RefRecord<S>,
     fasta::Error
 );
 
 parallel_record_impl!(
-    parallel_fastq,
-    parallel_fastq_init,
-    R,
-    fastq::Reader<R>,
-    fastq::RecordSet,
-    fastq::RefRecord,
+    "FASTQ",
+    read_process_fastq_records,
+    read_process_fastq_records_init,
+    fastq::RecordSet<S>,
+    fastq::RefRecord<S>,
     fastq::Error
 );
 
-/// Wrapper for `parallel::Reader` instances allowing
-/// the output to be reused in order to save allocations.
-/// Used by `parallel_fasta`/`parallel_fastq`
-///
-/// ```no_run
-/// use seq_io::fastq::{Reader,Record,RecordSet};
-/// use seq_io::parallel::{read_parallel,ReusableReader};
-///
-/// let inner = Reader::from_path("seqs.fastq").unwrap();
-/// let reader = ReusableReader::new(inner);
-///
-/// read_parallel(reader, 4, 2, |&mut (ref record_set, ref mut out): &mut (RecordSet, Vec<bool>)| {
-///     out.clear();
-///     for record in record_set {
-///         let found = record.seq().windows(3).position(|s| s == b"AAA").is_some();
-///         out.push(found);
-///     }
-/// }, |record_sets| {
-///     while let Some(result) = record_sets.next() {
-///         let &(ref record_set, ref out) = &*result.unwrap().0;
-///         for (record, found) in record_set.into_iter().zip(out) {
-///             // ...
-///         }
-///     }
-/// });
-/// ```
-pub struct ReusableReader<P, O>(P, PhantomData<O>);
-
-impl<P, O> ReusableReader<P, O> {
-    pub fn new(p: P) -> ReusableReader<P, O> {
-        ReusableReader(p, PhantomData)
-    }
-}
-
-impl<P, O> Reader for ReusableReader<P, O>
-where
-    P: Reader,
-    O: Send,
-{
-    type DataSet = (P::DataSet, O);
-    type Err = P::Err;
-    fn fill_data(&mut self, data: &mut Self::DataSet) -> Option<Result<(), P::Err>> {
-        self.0.fill_data(&mut data.0)
-    }
-}
+parallel_record_impl!(
+    "FASTX",
+    read_process_fastx_records,
+    read_process_fastx_records_init,
+    fastx::RecordSet<S>,
+    fastx::RefRecord<S>,
+    fastx::Error
+);
 
 /// Using this function currently does not work due to a
-/// [compiler bug](https://github.com/rust-lang/rust/issues/42950).
+/// [compiler bug](https://github.com/rust-lang/rust/issues/62529).
 ///
-/// `parallel_fasta`/`parallel_fastq` provide the same functionality for now
-/// (implemented using `parallel_record_impl` macro)
-pub fn parallel_records<R, O, W, F, Out>(
-    parser: R,
-    n_threads: u32,
+/// [`read_process_fasta_records`](read_process_fasta_records),
+/// [`read_process_fastq_records`](read_process_fastq_records) and
+/// [`read_process_fastx_records`](read_process_fastx_records)
+///  provide the same functionality for now
+/// (implemented using [`parallel_record_impl`](parallel_record_impl) macro).
+pub fn read_process_records_init<R, Ri, W, F, O, Out, E>(
+    reader_init: Ri,
+    n_workers: u32,
     queue_len: usize,
     work: W,
     mut func: F,
-) -> Result<Option<Out>, R::Err>
+) -> Result<Option<Out>, E>
 where
-    R: Reader + Send,
-    for<'a> &'a R::DataSet: IntoIterator,
-    R::DataSet: Default,
+    R: RecordSetReader,
+    Ri: Send + FnOnce() -> Result<R, E>,
+    R::RecordSet: Default + Send,
+    for<'a> &'a R::RecordSet: IntoIterator + Send,
     O: Default + Send,
-    W: Send + Sync,
-    W: Fn(<&R::DataSet as IntoIterator>::Item, &mut O),
-    F: FnMut(<&R::DataSet as IntoIterator>::Item, &O) -> Option<Out>,
+    W: Send + Sync + Fn(<&R::RecordSet as IntoIterator>::Item, &mut O),
+    F: FnMut(<&R::RecordSet as IntoIterator>::Item, &mut O) -> Option<Out>,
+    E: From<<R as RecordSetReader>::Err> + Send,
 {
-    let reader = ReusableReader(parser, PhantomData);
-
-    read_parallel(
-        reader,
-        n_threads,
+    read_process_recordsets_init(
+        reader_init,
+        n_workers,
         queue_len,
-        |d| {
-            let mut iter = d.0.into_iter();
-            let out: &mut Vec<O> = &mut d.1;
-            for mut x in out.iter_mut().zip(&mut iter) {
-                work(x.1, &mut x.0);
+        |rset, out: &mut Vec<O>| {
+            let mut record_iter = rset.into_iter();
+            for mut d in (&mut record_iter).zip(out.iter_mut()) {
+                work(d.0, &mut d.1);
             }
-            for i in iter {
+            for record in record_iter {
                 out.push(O::default());
-                work(i, out.last_mut().unwrap())
+                work(record, out.last_mut().unwrap());
             }
         },
-        |records| {
+        |mut records| {
             while let Some(result) = records.next() {
-                let (r, _) = result?;
-                for x in r.0.into_iter().zip(&r.1) {
-                    if let Some(out) = func(x.0, x.1) {
+                let (rset, out) = result?;
+                for (record, o) in rset.into_iter().zip(out.iter_mut()) {
+                    if let Some(out) = func(record, o) {
                         return Ok(Some(out));
                     }
                 }
@@ -448,34 +469,31 @@ where
             Ok(None)
         },
     )
+    .and_then(From::from)
 }
 
-// trait impls
-
-use super::fasta;
-
-impl<R, P> Reader for fasta::Reader<R, P>
-where
-    R: io::Read,
-    P: super::policy::BufPolicy + Send,
-{
-    type DataSet = fasta::RecordSet;
-    type Err = fasta::Error;
-    fn fill_data(&mut self, rset: &mut fasta::RecordSet) -> Option<Result<(), fasta::Error>> {
-        self.read_record_set(rset)
+macro_rules! impl_parallel_reader {
+    ($($l:lifetime)?; $SeqReader:ty, $RecordSet:ty, $Error:ty, $read_fn:ident) => {
+        impl<$($l,)? R, P, S> RecordSetReader for $SeqReader
+        where
+            R: std::io::Read,
+            P: crate::policy::BufPolicy + Send,
+            S: crate::core::PositionStore
+        {
+            type RecordSet = $RecordSet;
+            type Err = $Error;
+            fn fill_data(&mut self, rset: &mut $RecordSet) -> Result<bool, $Error> {
+                self.$read_fn(rset)
+            }
+        }
     }
 }
 
-use super::fastq;
-
-impl<R, P> Reader for fastq::Reader<R, P>
-where
-    R: io::Read,
-    P: super::policy::BufPolicy + Send,
-{
-    type DataSet = fastq::RecordSet;
-    type Err = fastq::Error;
-    fn fill_data(&mut self, rset: &mut fastq::RecordSet) -> Option<Result<(), fastq::Error>> {
-        self.read_record_set(rset)
-    }
-}
+impl_parallel_reader!(; fasta::Reader<R, P, S>, fasta::RecordSet<S>, fasta::Error, read_record_set);
+impl_parallel_reader!(; fasta::single_line::Reader<R, P, S>, fasta::RecordSet<S>, fasta::Error, read_record_set);
+impl_parallel_reader!(; fastq::Reader<R, P, S>, fastq::RecordSet<S>, fastq::Error, read_record_set);
+impl_parallel_reader!(; fastq::multiline::Reader<R, P, S>, fastq::RecordSet<S>, fastq::Error, read_record_set);
+impl_parallel_reader!(; fastx::Reader<R, P, S>, fastx::RecordSet<S>, fastx::Error, read_record_set);
+impl_parallel_reader!(; fastx::multiline_qual::Reader<R, P, S>, fastx::RecordSet<S>, fastx::Error, read_record_set);
+impl_parallel_reader!('a ; &'a mut (dyn fastx::dynamic::FastxReader<R, P, S> + Send), fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
+impl_parallel_reader!('a ; Box<dyn fastx::dynamic::FastxReader<R, P, S> + Send + 'a>, fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
