@@ -3,7 +3,6 @@
 
 ![docs.rs](https://docs.rs/seq_io/badge.svg)
 [![Build status](https://api.travis-ci.org/markschl/seq_io.png)](https://travis-ci.org/markschl/seq_io)
-seq_io)
 
 This library provides an(other) attempt at parsing of the sequence formats FASTA and FASTQ, as well as writing.
 
@@ -71,8 +70,8 @@ main thread.
   simple FASTA and FASTQ readers.
 * *[fastq-rs](https://github.com/aseyboldt/fastq-rs)*: FASTQ parser with
   comparable performance (see below). `seq_io` was inspired by `fastq_rs`.
-* *[Needletail](https://github.com/onecodex/needletail)* has a FASTA parser.
-* *[fasten](https://github.com/lskatz/fasten)* (FASTQ parser)
+* *[Needletail](https://github.com/onecodex/needletail)*: FASTA, FASTQ
+* *[fasten](https://github.com/lskatz/fasten)*: FASTQ
 
 ### Performance comparisons
 

@@ -279,6 +279,7 @@ where
         Ok(false)
     }
 
+    // searches the first byte position of the first non-empty line
     fn first_byte(&mut self) -> Result<Option<(usize, usize, u8)>, Error> {
         let mut line_num = 0;
 
