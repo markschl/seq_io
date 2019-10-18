@@ -344,3 +344,45 @@ fn test_fastq_write_record_unchanged() {
     }
     assert_eq!(&out, &FASTQ);
 }
+
+#[test]
+fn test_potentially_gzip_reader_not_gzip() {
+    let potentially = Reader::from_maybe_gzip_path(
+        std::path::Path::new("tests/data/a.fq"))
+        .unwrap();
+    match potentially {
+        PotentiallyGzipFastqReader::PlainReader{reader: mut r} => {
+            let observed_records: Result<Vec<_>, _> = r
+                .records()
+                .collect();
+            assert_eq!(
+                vec![
+                    OwnedRecord {head: b"id1".to_vec(), seq: b"ACGT".to_vec(), qual: b"IIII".to_vec()}
+                ],
+               observed_records.unwrap(),
+            )
+        },
+        _ => panic!()
+    }
+}
+
+#[test]
+fn test_potentially_gzip_reader_is_gzip() {
+    let potentially = Reader::from_maybe_gzip_path(
+        std::path::Path::new("tests/data/a.fq.gz"))
+        .unwrap();
+    match potentially {
+        PotentiallyGzipFastqReader::GzipReader{reader: mut r} => {
+            let observed_records: Result<Vec<_>, _> = r
+                .records()
+                .collect();
+            assert_eq!(
+                vec![
+                    OwnedRecord {head: b"id1".to_vec(), seq: b"ACGT".to_vec(), qual: b"IIII".to_vec()}
+                ],
+               observed_records.unwrap(),
+            )
+        },
+        _ => panic!()
+    }
+}
