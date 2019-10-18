@@ -9,6 +9,7 @@ use std::iter;
 use std::path::Path;
 use std::slice;
 use std::str::{self, Utf8Error};
+use flate2;
 
 use buf_redux;
 
@@ -74,6 +75,16 @@ where
     }
 }
 
+pub enum PotentiallyGzipFastqReader {
+    PlainReader {
+        // TODO: Generalise policy into a trait
+        reader: Reader<std::fs::File, StdPolicy>
+    },
+    GzipReader {
+        reader: Reader<flate2::bufread::GzDecoder<buf_redux::BufReader<std::fs::File>>>
+    }
+}
+
 impl Reader<File, DefaultBufPolicy> {
     /// Creates a reader from a file path.
     ///
@@ -88,6 +99,36 @@ impl Reader<File, DefaultBufPolicy> {
     /// ```
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
+    }
+
+    pub fn from_maybe_gzip_path<P: AsRef<Path>>(path: P) -> io::Result<PotentiallyGzipFastqReader> {
+        // TODO: Fix error handling
+        let mut file = File::open(path).unwrap();
+
+        // Make a seq_io buffer
+        let mut buffer = buf_redux::BufReader::new(file);
+
+        // Read a little
+        buffer.read_into_buf().unwrap();
+
+        // Test first
+        // If plain fastq, reset buffer pointer
+        if buffer.buffer()[0] == b'@' {
+            return Ok(PotentiallyGzipFastqReader::PlainReader {
+                reader: Reader {
+                    buf_reader: buffer,
+                    buf_pos: BufferPosition::default(),
+                    search_pos: SearchPos::HEAD,
+                    position: Position::new(1, 0),
+                    finished: false,
+                    buf_policy: StdPolicy,
+                }
+            });
+        } else {
+            return Ok(PotentiallyGzipFastqReader::GzipReader {
+                reader: Reader::new(flate2::bufread::GzDecoder::new(buffer))
+            })
+        }
     }
 }
 
