@@ -705,18 +705,7 @@ impl From<io::Error> for Error {
 }
 
 impl StdError for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Io(ref e) => e.description(),
-            Error::UnequalLengths { .. } => "sequence and quality lengths are different",
-            Error::InvalidStart { .. } => "invalid record start",
-            Error::InvalidSep { .. } => "invalid record separator",
-            Error::UnexpectedEnd { .. } => "unexpected end of input",
-            Error::BufferLimit => "buffer limit reached",
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
             Error::Io(ref err) => Some(err),
             _ => None,

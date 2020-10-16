@@ -625,11 +625,10 @@ impl From<io::Error> for Error {
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            Error::Io(ref e) => e.description(),
-            Error::InvalidStart { .. } => "invalid record start",
-            Error::BufferLimit => "buffer limit reached",
+            Error::Io(ref err) => Some(err),
+            _ => None,
         }
     }
 }
