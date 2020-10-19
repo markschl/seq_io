@@ -13,7 +13,10 @@ This library provides readers for the the following sequence formats:
 * *FASTQ* (including multi-line FASTQ)
 * *"FASTX"*: Automatic recognition of the sequence format (either FASTA or FASTQ)
 
-[**View documentation (for 0.4.0-alpha.x version)**](https://docs.rs/seq_io)
+[**Documentation for development version (0.4.0-alpha.x)**](https://docs.rs/seq_io/0.4.0-alpha.0/seq_io/index.html)
+
+[**Documentation for the stable version (0.3.x)**](https://docs.rs/seq_io)
+
 
 ## Features
 

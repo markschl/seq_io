@@ -2,7 +2,7 @@
 name = "seq_io"
 version = "0.4.0-alpha.0"
 authors = ["<markschl19@gmail.com>"]
-description = "Fast FASTA, FASTQ and FASTX parsing"
+description = "Fast FASTA, FASTQ and FASTX parsing and writing"
 license = "MIT"
 repository = "https://github.com/markschl/seq_io"
 documentation = "https://docs.rs/seq_io"
