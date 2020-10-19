@@ -47,4 +47,4 @@ lengths.
 
 The current default buffer capacity is 64 KiB.
 
-![capacity / sequence length comparison](bench_results/bench_cap.png | width=550)
+<img src="bench_results/bench_cap.png" width="700">
