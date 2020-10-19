@@ -399,7 +399,6 @@ where
                     if guess_qual || multiline_fastq && !check_lengths {
                         self.length_diff = 0;
                     }
-                    // TODO: (continue)
                 }
                 Some(sp) => {
                     // record incomplete
@@ -419,7 +418,8 @@ where
                             // EOF reached
                             //println!("check end, has last: {}", has_last);
                             if has_last {
-                                // TODO: two calls to check_length, not optimal!
+                                // TODO: two calls to check_length, may not be optimal
+                                // (they need to be inlined)
                                 // check in loop later? not cache friendly
                                 if check_lengths && !fasta {
                                     let buf = self.buf_reader.buffer();
@@ -436,7 +436,6 @@ where
                         try_break!(self.fill_buf(), self);
                         continue;
                     }
-                    // TODO: where to check length??
 
                     // record set completed -> return
                     self.search_pos = Some(sp);

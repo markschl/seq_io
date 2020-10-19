@@ -60,9 +60,6 @@ pub enum ErrorKind {
 
 impl ErrorKind {
     /// Returns the position for this error, if one exists.
-    /// // TODO: copy-paste
-    /// This is a convenience function that permits callers to easily access
-    /// the position on an error without doing case analysis on `ErrorKind`.
     pub fn position(&self) -> Option<&ErrorPosition> {
         match self {
             ErrorKind::InvalidStart { pos, .. } => Some(pos),

@@ -22,6 +22,17 @@ Still, there are a few API changes (list may be incomplete):
   growth to 1 GiB.
 * `Reader::position()` now returns an owned copy of `Position`, not a reference.
 
+**[Still not done:]**
+
+* Review the API
+* Evaluate, whether adding a `min_records()` method to `BufPolicy` will help.
+  In cases where only a few records are in the buffer, frequent relocations are
+  necessary, which could hurt performance -> buffer should be enlarged.
+* Make it easier to work with paired-end files, especially in parallel
+  processing.
+* Evaluate even more code with fuzzing
+* Resolve TODOs, write more tests, remove println! in comments.
+
 ## v0.3.1 [2020-10-18]
 
 * Updated dependencies (fixing #4) and silenced warnings

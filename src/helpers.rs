@@ -225,7 +225,7 @@ impl Position {
 
 // impl<'a> ExactSizeIterator for LinePositionIter<'a> {}
 
-// TODO: compare performance
+// TODO: compare with above version (performance)
 /// Iterator over the lines of a text slice, whose positions have been searched
 /// before and stored. Iterating is very fast.
 pub struct LinePositionIter<'a> {
