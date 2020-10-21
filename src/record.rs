@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::io;
 use std::str;
+use memchr::memchr;
 
 /// re-export of [`crate::core::PositionStore`](crate::core::PositionStore).
 /// Keep in mind that the methods of `PositionStore` are only used internally.
@@ -79,12 +80,16 @@ pub trait BaseRecord {
     /// Returns the record ID (everything before an optional space) as byte slice.
     #[inline]
     fn id_bytes(&self) -> &[u8] {
-        self.head().split(|b| *b == b' ').next().unwrap()
+        let head = self.head();
+        if let Some(pos) = memchr(b' ', head) {
+            return &head[..pos];
+        }
+        head
     }
 
     /// Returns the record ID (everything before an optional space) as `&str`.
     #[inline]
-    fn id(&self) -> Result<&str, std::str::Utf8Error> {
+    fn id(&self) -> Result<&str, str::Utf8Error> {
         str::from_utf8(self.id_bytes())
     }
 
@@ -92,13 +97,18 @@ pub trait BaseRecord {
     /// as byte slice, if present.
     #[inline]
     fn desc_bytes(&self) -> Option<&[u8]> {
-        self.head().splitn(2, |b| *b == b' ').nth(1)
+        let head = self.head();
+        if let Some(pos) = memchr(b' ', head) {
+            return Some(&head[pos + 1..])
+        }
+        None
+
     }
 
     /// Returns the record description (separated from the ID by a space)
     /// as `&str` slice, if present.
     #[inline]
-    fn desc(&self) -> Option<Result<&str, std::str::Utf8Error>> {
+    fn desc(&self) -> Option<Result<&str, str::Utf8Error>> {
         self.desc_bytes().map(str::from_utf8)
     }
 
@@ -106,17 +116,20 @@ pub trait BaseRecord {
     /// This should be faster than calling `id()` and `desc()` separately.
     #[inline]
     fn id_desc_bytes(&self) -> (&[u8], Option<&[u8]>) {
-        let mut h = self.head().splitn(2, |c| *c == b' ');
-        (h.next().unwrap(), h.next())
+        let head = self.head();
+        if let Some(pos) = memchr(b' ', head) {
+            return (&head[..pos], Some(&head[pos + 1..]))
+        }
+        (head, None)
     }
 
     /// Returns both the ID and the description of the record (if present)
     /// as `&str` slices.
     /// This should be faster than calling `id()` and `desc()` separately.
     #[inline]
-    fn id_desc(&self) -> Result<(&str, Option<&str>), std::str::Utf8Error> {
-        let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
-        Ok((h.next().unwrap(), h.next()))
+    fn id_desc(&self) -> Result<(&str, Option<&str>), str::Utf8Error> {
+        let (id, desc) = self.id_desc_bytes();
+        Ok((str::from_utf8(id)?, desc.map(str::from_utf8).transpose()?))
     }
 }
 
