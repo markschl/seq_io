@@ -20,10 +20,10 @@ macro_rules! validate_ref {
 }
 
 mod standard {
-    use seq_io::fastq::{ErrorKind, RangeStore, Reader, RecordSet};
+    use seq_io::fastq::{ErrorKind, RangeStore, ReaderBuilder, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_standard_tests!(
-        Reader,
+        ReaderBuilder,
         RangeStore,
         RecordSet,
         ErrorKind,
@@ -33,11 +33,11 @@ mod standard {
 }
 
 mod multi_line {
-    use seq_io::fastq::multiline::{MultiRangeStore, Reader};
+    use seq_io::fastq::multiline::{MultiRangeStore, ReaderBuilder};
     use seq_io::fastq::{ErrorKind, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_multi_tests!(
-        Reader,
+        ReaderBuilder,
         MultiRangeStore,
         RecordSet,
         ErrorKind,

@@ -1,8 +1,11 @@
-use super::{trim_cr, PositionStore, SearchPos};
+use super::{
+    check_lengths, record_head, trim_cr, QualRecordPosition, SearchPos, SeqRecordPosition,
+};
 use crate::fastx::{Error, ErrorKind, Result};
-use crate::policy::{BufPolicy, StdPolicy};
+use crate::policy::BufPolicy;
 use crate::{ErrorOffset, ErrorPosition};
 use std::io;
+use std::ops::Deref;
 
 /// Reader state
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -26,15 +29,22 @@ impl SearchPosition {
     }
 }
 
-pub(crate) struct CoreReader<R, P, S>
+/// Combines init() and set_record_start()
+#[inline]
+fn init_record<Q: QualRecordPosition>(store: &mut Q, start: usize) {
+    store.init();
+    store.set_record_start(start);
+}
+
+pub(crate) struct CoreReader<R, P, Q, S>
 where
     R: io::Read,
     P: BufPolicy,
-    S: PositionStore,
+    Q: QualRecordPosition + Deref<Target = S>,
 {
     buf_reader: crate::core::BufReader<R, P>,
     // Position of current record within current buffer
-    pos_store: S,
+    pos_store: Q,
     // only used for multi-line FASTQ
     length_diff: isize,
     // Current search position within the record (only relevant with read_record_set)
@@ -45,21 +55,24 @@ where
     record_idx: u64,
 }
 
-impl<R, S> CoreReader<R, StdPolicy, S>
+impl<R, P, Q, S> CoreReader<R, P, Q, S>
 where
     R: io::Read,
-    S: PositionStore,
+    P: BufPolicy,
+    Q: QualRecordPosition + Deref<Target = S>,
+    S: SeqRecordPosition,
 {
     #[inline]
-    pub fn with_capacity(reader: R, capacity: usize) -> Self {
-        Self::_from_buf_reader(crate::core::BufReader::with_capacity(reader, capacity))
+    pub fn new(reader: R, capacity: usize, policy: P) -> Self {
+        let buf_rdr = crate::core::BufReader::with_capacity(reader, capacity).set_policy(policy);
+        Self::_from_buf_reader(buf_rdr)
     }
 
     #[inline]
-    fn _from_buf_reader(rdr: crate::core::BufReader<R>) -> Self {
+    fn _from_buf_reader(rdr: crate::core::BufReader<R, P>) -> Self {
         CoreReader {
             buf_reader: rdr,
-            pos_store: S::default(),
+            pos_store: Q::default(),
             search_pos: None,
             length_diff: 0,
             state: State::New,
@@ -71,7 +84,7 @@ where
 
     #[inline]
     pub fn from_buf_reader(
-        rdr: crate::core::BufReader<R>,
+        rdr: crate::core::BufReader<R, P>,
         byte_offset: usize,
         line_idx: u64,
     ) -> Self {
@@ -79,43 +92,9 @@ where
         reader.init_pos(byte_offset, line_idx);
         reader
     }
-}
 
-impl<R, P, S> CoreReader<R, P, S>
-where
-    R: io::Read,
-    P: BufPolicy,
-    S: PositionStore,
-{
     // Minimum capacity that will not cause any panics
     const MIN_CAPACITY: usize = 3;
-
-    #[inline]
-    pub fn set_policy<T: BufPolicy>(self, buf_policy: T) -> CoreReader<R, T, S> {
-        CoreReader {
-            buf_reader: self.buf_reader.set_policy(buf_policy),
-            pos_store: self.pos_store,
-            search_pos: self.search_pos,
-            length_diff: self.length_diff,
-            state: self.state,
-            line_idx: self.line_idx,
-            record_idx: self.record_idx,
-        }
-        .validate_policy()
-    }
-
-    #[inline]
-    pub fn set_store<T: PositionStore>(self) -> CoreReader<R, P, T> {
-        CoreReader {
-            buf_reader: self.buf_reader,
-            pos_store: T::from_other(self.pos_store),
-            search_pos: self.search_pos,
-            length_diff: self.length_diff,
-            state: self.state,
-            line_idx: self.line_idx,
-            record_idx: self.record_idx,
-        }
-    }
 
     /// Set the reader position. The byte offset is relative
     /// to the buffer (not the file), the line offset is relative
@@ -123,7 +102,7 @@ where
     #[inline]
     pub fn init_pos(&mut self, byte: usize, line_idx: u64) {
         assert!(byte < self.buf_reader.buffer().len());
-        self.pos_store.init_record(byte);
+        init_record(&mut self.pos_store, byte);
         self.line_idx = line_idx;
         self.state = State::Positioned;
     }
@@ -133,7 +112,8 @@ where
         self.line_idx += self.pos_store.num_lines() as u64;
         self.record_idx += 1;
         // increment buffer position
-        self.pos_store.init_record(self.pos_store.record_end());
+        let start = self.pos_store.record_end();
+        init_record(&mut self.pos_store, start);
         if reset_length {
             self.length_diff = 0;
         }
@@ -184,7 +164,7 @@ where
             guess_qual,
             check_lengths,
         ) {
-            Some(Ok(_)) => Some(Ok((self.buf_reader.buffer(), &self.pos_store))),
+            Some(Ok(_)) => Some(Ok((self.buf_reader.buffer(), (&self.pos_store).deref()))),
             Some(Err(e)) => {
                 self.state = State::Finished;
                 Some(Err(e))
@@ -274,6 +254,7 @@ where
         multiline_fastq: bool,
         guess_qual: bool,
         check_lengths: bool,
+        n_records: Option<usize>,
     ) -> Result<bool>
     where
         T: crate::core::RecordSet<S>,
@@ -285,6 +266,7 @@ where
             multiline_fastq,
             guess_qual,
             check_lengths,
+            n_records,
         )
         .map_err(|e| {
             self.state = State::Finished;
@@ -301,6 +283,7 @@ where
         multiline_fastq: bool,
         guess_qual: bool,
         check_lengths: bool,
+        n_records: Option<usize>,
     ) -> Result<bool>
     where
         T: crate::core::RecordSet<S>,
@@ -391,13 +374,25 @@ where
                         let buf = self.buf_reader.buffer();
                         try_break!(self.check_lengths(buf, multiline_fastq), self);
                     }
-                    record_set.set_next_pos(&self.pos_store);
+                    record_set.set_next_pos((&self.pos_store).deref());
                     //println!( "[RSET] complete: {:?}, lines {} + {}", self.pos_store, self.line_idx, self.pos_store.num_lines());
                     // initiate next record
                     self.line_idx += self.pos_store.num_lines() as u64;
-                    self.pos_store.init_record(self.pos_store.record_end());
+                    let start = self.pos_store.record_end();
+                    init_record(&mut self.pos_store, start);
                     if guess_qual || multiline_fastq && !check_lengths {
                         self.length_diff = 0;
+                    }
+                    // if exact number of records requested and number reached
+                    // -> stop
+                    if let Some(n) = n_records {
+                        if record_set.len() == n {
+                            self.search_pos = Some(SearchPosition::new(
+                                SearchPos::HEAD,
+                                self.pos_store.record_start(),
+                            ));
+                            break Ok(true);
+                        }
                     }
                 }
                 Some(sp) => {
@@ -425,18 +420,28 @@ where
                                     let buf = self.buf_reader.buffer();
                                     try_break!(self.check_lengths(buf, multiline_fastq), self);
                                 }
-                                record_set.set_next_pos(&self.pos_store);
+                                record_set.set_next_pos((&self.pos_store).deref());
                             } else if record_set.is_empty() {
                                 return Ok(false);
                             }
                         }
-                    } else if record_set.len() == 0 {
-                        // try again, enlarging the buffer / checking for end of input
-                        try_break!(self.grow(), self);
-                        try_break!(self.fill_buf(), self);
-                        continue;
-                    }
+                    } else {
+                        let do_grow = if let Some(n) = n_records {
+                            // exact number of records requested, but number not yet reached
+                            // -> enlarge
+                            // TODO: maybe enlarge more conservatively?
+                            record_set.len() < n
+                        } else {
+                            record_set.len() == 0
+                        };
 
+                        if do_grow {
+                            // try again, enlarging the buffer / checking for end of input
+                            try_break!(self.grow(), self);
+                            try_break!(self.fill_buf(), self);
+                            continue;
+                        }
+                    }
                     // record set completed -> return
                     self.search_pos = Some(sp);
                     break Ok(true);
@@ -444,10 +449,10 @@ where
             }
         };
 
-        //println!("set buffer {:?}", self.buf_reader.buffer());
-        record_set.set_buffer(self.buf_reader.buffer());
+        // println!("set buffer {:?}", self.buf_reader.buffer());
         self.record_idx += record_set.len() as u64;
-        //println!("finished rset {:?}, lines {}",record_set.len(),self.line_idx);
+        // println!("finished rset {:?}, lines {}",record_set.len(), self.line_idx);
+        record_set.set_buffer(self.buf_reader.buffer());
         retval
     }
 
@@ -512,7 +517,7 @@ where
                                         && buffer.get(next_pos) == Some(&b'>')
                                     {
                                         // Two consequtive FASTA headers -> treat sequence as empty
-                                        self.pos_store.set_sep_pos(next_pos, false);
+                                        // self.pos_store.set_sep_pos(next_pos, false);
                                         self.pos_store.set_record_end(next_pos, false);
                                         return Ok(None);
                                     }
@@ -540,7 +545,7 @@ where
                         if fasta {
                             if !multiline_fasta || buffer.get(next_pos) == Some(&b'>') {
                                 // next line has header
-                                self.pos_store.set_sep_pos(next_pos, true);
+                                // self.pos_store.set_sep_pos(next_pos, true);
                                 self.pos_store.set_record_end(next_pos, true);
                                 return Ok(None);
                             }
@@ -718,7 +723,7 @@ where
                 };
                 if fasta {
                     //println!("set fasta sep pos");
-                    self.pos_store.set_sep_pos(end, has_line);
+                    // self.pos_store.set_sep_pos(end, has_line);
                 } else if multiline_fastq {
                     // Multi-line FASTQ: consider last line for length check
                     //println!("last line multi eq {:?}", &buf[pos.byte..end - 1]);
@@ -754,10 +759,7 @@ where
     #[allow(unreachable_code, unused_variables)]
     fn check_lengths(&self, buffer: &[u8], multiline_fastq: bool) -> Result<()> {
         let (seq_len, qual_len) = if !multiline_fastq {
-            match self
-                .pos_store
-                .check_lengths(self.buf_reader.buffer(), false)
-            {
+            match check_lengths(&self.pos_store, self.buf_reader.buffer(), false) {
                 Ok(()) => return Ok(()),
                 Err((s, q)) => (s, q),
             }
@@ -811,9 +813,10 @@ where
     fn make_room(&mut self, pos: &mut SearchPosition) -> Result<()> {
         //println!("make room {:?} {:?}", self.buf_reader.buffer().len(), pos);
         // move incomplete bytes to start of buffer and retry
-        let offset = self.pos_store.record_start() as usize;
+        let offset = self.pos_store.record_start();
         self.buf_reader.make_room(offset);
-        self.pos_store.move_to_start(pos.record_pos, offset);
+        self.pos_store
+            .apply_offset(0 - offset as isize, Some(pos.record_pos));
         pos.byte -= offset;
         Ok(())
     }
@@ -837,9 +840,7 @@ where
     #[inline(never)]
     fn record_id(&self) -> String {
         let buffer = self.buf_reader.buffer();
-        let id_bytes = self
-            .pos_store
-            .head(buffer)
+        let id_bytes = record_head(&self.pos_store, buffer)
             .split(|b| *b == b' ')
             .next()
             .unwrap();
@@ -847,11 +848,12 @@ where
     }
 }
 
-impl<R, P, S> CoreReader<R, P, S>
+impl<R, P, Q, S> CoreReader<R, P, Q, S>
 where
     R: io::Read + io::Seek,
     P: BufPolicy,
-    S: PositionStore,
+    Q: QualRecordPosition + Deref<Target = S>,
+    S: SeqRecordPosition,
 {
     /// Seeks to the specified position using the byte offset given by
     /// `Position::byte()`. If the position is reachable within the
@@ -869,13 +871,12 @@ where
         if seek_to >= buf_offset && seek_to + corr <= self.buf_reader.buffer().len() as u64 {
             //println!("relocate {} {}, -> {}",pos.byte(),buf_offset,pos.byte() - buf_offset);
             // position reachable within buffer -> no actual seeking necessary
-            self.pos_store
-                .init_record((pos.byte() - buf_offset) as usize);
+            init_record(&mut self.pos_store, (pos.byte() - buf_offset) as usize);
             self.state = State::Positioned;
             return Ok(());
         }
         //println!("seek {}", pos.byte());
-        self.pos_store.init_record(0);
+        init_record(&mut self.pos_store, 0);
         self.state = State::New;
         self.search_pos = None;
         self.buf_reader.seek_to(seek_to)

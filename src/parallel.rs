@@ -103,6 +103,7 @@
 //! ).expect("FASTQ reading error");
 //! ```
 
+use crate::core::{QualRecordPosition, SeqRecordPosition};
 use crate::{fasta, fastq, fastx};
 use std::sync::mpsc;
 
@@ -277,6 +278,8 @@ where
 /// * `$name`: name of the generated function
 /// * `$name_init`: name of another generated function, which takes a closure
 ///   initializing the readers in the background thread.
+/// * <X: Trait, ...>: Optional set of trait bounds to be added to the
+///   functions. If none are to be added, specify `<>`.
 /// * `$RecordSet`: record set type (see [`RecordSetReader::RecordSet`](RecordSetReader::RecordSet)).
 ///   In addition to the trait requirements, `&$RecordSet` needs to implement
 ///   `IntoIterator<Item=$Record>`.
@@ -284,12 +287,14 @@ where
 /// * `$Error`: reading error type ([`RecordSetReader::Err`](RecordSetReader::Err))
 #[macro_export]
 macro_rules! parallel_record_impl {
-    ($format:expr, $name:ident, $name_init:ident, 
+    ($format:expr, $name:ident, $name_init:ident,
+        ( $($bounds:tt)* ),
         $RecordSet:ty, $Record:ty, $Error:ty) => {
         _parallel_record_impl!(
             $format,
             $name,
             $name_init,
+            ($($bounds)*),
             $RecordSet,
             $Record,
             $Error,
@@ -300,6 +305,7 @@ macro_rules! parallel_record_impl {
 
 macro_rules! _parallel_record_impl {
     ($format:expr, $name:ident, $name_init:ident,
+        ( $($bounds:tt)* ),
         $RecordSet:ty, $Record:ty, $Error:ty,
         $name_link:expr) => {
 
@@ -318,7 +324,7 @@ macro_rules! _parallel_record_impl {
         /// * Once ready, records an results are sent to the main thread,
         ///   where they are supplied to the `func` closure. The order of the
         ///   records may be different.
-        pub fn $name<R, S, W, F, O, Out>(
+        pub fn $name<R, $($bounds)*, W, F, O, Out>(
             reader: R,
             n_workers: u32,
             queue_len: usize,
@@ -328,13 +334,13 @@ macro_rules! _parallel_record_impl {
         where
             R: RecordSetReader<RecordSet = $RecordSet, Err = $Error> + Send,
             O: Default + Send,
-            S: crate::core::PositionStore,
             W: Send + Sync + Fn($Record, &mut O),
             F: FnMut($Record, &mut O) -> Option<Out>,
         {
-            $name_init::<_, _, _, _, _, _, _, $Error>(
+            let out: Result<_, $Error> = $name_init(
                 || Ok(reader), n_workers, queue_len, work, func
-            )
+            );
+            out
         }
 
         /// Like
@@ -345,7 +351,7 @@ macro_rules! _parallel_record_impl {
         /// `reader_init` should return a result. The error type needs to
         /// implement `From<RecordSetReader::Err>`
         ///
-        pub fn $name_init<R, Ri, S, W, F, O, Out, E>(
+        pub fn $name_init<R, Ri, $($bounds)*, W, F, O, Out, E>(
             reader_init: Ri,
             n_workers: u32,
             queue_len: usize,
@@ -356,7 +362,6 @@ macro_rules! _parallel_record_impl {
             R: RecordSetReader<RecordSet = $RecordSet, Err = $Error>,
             Ri: Send + FnOnce() -> Result<R, E>,
             O: Default + Send,
-            S: crate::core::PositionStore,
             W: Send + Sync + Fn($Record, &mut O),
             F: FnMut($Record, &mut O) -> Option<Out>,
             E: Send + From<R::Err>,
@@ -395,6 +400,7 @@ parallel_record_impl!(
     "FASTA",
     read_process_fasta_records,
     read_process_fasta_records_init,
+    (S: SeqRecordPosition + Send + Sync),
     fasta::RecordSet<S>,
     fasta::RefRecord<S>,
     fasta::Error
@@ -404,6 +410,7 @@ parallel_record_impl!(
     "FASTQ",
     read_process_fastq_records,
     read_process_fastq_records_init,
+    (S: QualRecordPosition + Send + Sync),
     fastq::RecordSet<S>,
     fastq::RefRecord<S>,
     fastq::Error
@@ -413,6 +420,7 @@ parallel_record_impl!(
     "FASTX",
     read_process_fastx_records,
     read_process_fastx_records_init,
+    (S: QualRecordPosition + Send + Sync),
     fastx::RecordSet<S>,
     fastx::RefRecord<S>,
     fastx::Error
@@ -473,12 +481,12 @@ where
 }
 
 macro_rules! impl_parallel_reader {
-    ($($l:lifetime)?; $SeqReader:ty, $RecordSet:ty, $Error:ty, $read_fn:ident) => {
+    ($($l:lifetime)?; $SeqReader:ty, $RecordPositionTrait:path, $RecordSet:ty, $Error:ty, $read_fn:ident) => {
         impl<$($l,)? R, P, S> RecordSetReader for $SeqReader
         where
             R: std::io::Read,
             P: crate::policy::BufPolicy + Send,
-            S: crate::core::PositionStore
+            S: $RecordPositionTrait + Send + Sync
         {
             type RecordSet = $RecordSet;
             type Err = $Error;
@@ -489,11 +497,12 @@ macro_rules! impl_parallel_reader {
     }
 }
 
-impl_parallel_reader!(; fasta::Reader<R, P, S>, fasta::RecordSet<S>, fasta::Error, read_record_set);
-impl_parallel_reader!(; fasta::single_line::Reader<R, P, S>, fasta::RecordSet<S>, fasta::Error, read_record_set);
-impl_parallel_reader!(; fastq::Reader<R, P, S>, fastq::RecordSet<S>, fastq::Error, read_record_set);
-impl_parallel_reader!(; fastq::multiline::Reader<R, P, S>, fastq::RecordSet<S>, fastq::Error, read_record_set);
-impl_parallel_reader!(; fastx::Reader<R, P, S>, fastx::RecordSet<S>, fastx::Error, read_record_set);
-impl_parallel_reader!(; fastx::multiline_qual::Reader<R, P, S>, fastx::RecordSet<S>, fastx::Error, read_record_set);
-impl_parallel_reader!('a ; &'a mut (dyn fastx::dynamic::FastxReader<R, P, S> + Send), fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
-impl_parallel_reader!('a ; Box<dyn fastx::dynamic::FastxReader<R, P, S> + Send + 'a>, fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
+impl_parallel_reader!(; fasta::Reader<R, P, S>, SeqRecordPosition, fasta::RecordSet<S>, fasta::Error, read_record_set);
+impl_parallel_reader!(; fasta::single_line::Reader<R, P, S>, SeqRecordPosition, fasta::RecordSet<S>, fasta::Error, read_record_set);
+impl_parallel_reader!(; fastq::Reader<R, P, S>, QualRecordPosition, fastq::RecordSet<S>, fastq::Error, read_record_set);
+impl_parallel_reader!(; fastq::multiline::Reader<R, P, S>, QualRecordPosition, fastq::RecordSet<S>, fastq::Error, read_record_set);
+impl_parallel_reader!(; fastx::Reader<R, P, S>, QualRecordPosition, fastx::RecordSet<S>, fastx::Error, read_record_set);
+impl_parallel_reader!(; fastx::multiline_qual::Reader<R, P, S>, QualRecordPosition, fastx::RecordSet<S>, fastx::Error, read_record_set);
+impl_parallel_reader!('a ; &'a mut (dyn fastx::dynamic::FastxReader<R, P, S> + Send), QualRecordPosition, fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
+impl_parallel_reader!('a ; Box<dyn fastx::dynamic::FastxReader<R, P, S> + Send + 'a>, QualRecordPosition, fastx::RecordSet<S>, fastx::Error, read_record_set_fastx);
+

@@ -1,11 +1,9 @@
+use memchr::memchr;
 use std::borrow::Cow;
 use std::io;
 use std::str;
-use memchr::memchr;
 
-/// re-export of [`crate::core::PositionStore`](crate::core::PositionStore).
-/// Keep in mind that the methods of `PositionStore` are only used internally.
-pub use crate::core::PositionStore;
+pub use crate::core::{QualRecordPosition, SeqRecordPosition};
 
 pub trait BaseRecord {
     /// Return the header line of the record as byte slice
@@ -36,11 +34,11 @@ pub trait BaseRecord {
     /// Returns the number of sequence lines.
     /// Calling `record.seq_lines()` gives the same result as
     /// `record.seq_lines().len()`, but the latter may be slow depending on the
-    /// type [`PositionStore`](crate::core::PositionStore) used since the line
+    /// type [`SeqRecordPosition`](crate::core::SeqRecordPosition) used since the line
     /// positions may have to be searched first.
     fn num_seq_lines(&self) -> usize;
 
-    /// Returns a booleany specifying whether there is quality information in
+    /// Returns a boolean specifying whether there is quality information in
     /// this record or not.
     fn has_quality(&self) -> bool;
 
@@ -99,10 +97,9 @@ pub trait BaseRecord {
     fn desc_bytes(&self) -> Option<&[u8]> {
         let head = self.head();
         if let Some(pos) = memchr(b' ', head) {
-            return Some(&head[pos + 1..])
+            return Some(&head[pos + 1..]);
         }
         None
-
     }
 
     /// Returns the record description (separated from the ID by a space)
@@ -118,7 +115,7 @@ pub trait BaseRecord {
     fn id_desc_bytes(&self) -> (&[u8], Option<&[u8]>) {
         let head = self.head();
         if let Some(pos) = memchr(b' ', head) {
-            return (&head[..pos], Some(&head[pos + 1..]))
+            return (&head[..pos], Some(&head[pos + 1..]));
         }
         (head, None)
     }

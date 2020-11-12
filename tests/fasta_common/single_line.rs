@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! impl_fasta_single_tests {
-    ($Reader:ident, $PositionStore:ty, $RecordSet:ty, $ErrorKind:ident, $parallel_reader_func:path) => {
+    ($Reader:ident, $PositionStore:path, $RecordSet:ty, $ErrorKind:ident, $parallel_reader_func:path) => {
         //use seq_io::parallel::parallel_fastq;
         use crate::fasta_common::{FASTA_SINGLE, FASTA_SINGLE_EXPECTED};
 

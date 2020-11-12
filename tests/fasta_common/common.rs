@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! impl_common_fasta_tests {
-    ($input:expr, $expected:expr, $Reader:ident, $PositionStore:ty, $RecordSet:ty, $ErrorKind:ident,
+    ($input:expr, $expected:expr, $ReaderBuilder:ident, $PositionStore:path, $RecordSet:ty, $ErrorKind:ident,
         $next_fn:ident, $read_record_set_fn:ident, $seek_fn:ident, $parallel_reader_func:path) => {
 
 use seq_io::Position as _Position;
@@ -12,7 +12,7 @@ macro_rules! test_reader {
             if let Err(_) = std::panic::catch_unwind(|| {
                 #[allow(unused_mut)]
                 {
-                    let mut $reader: $Reader<_, _, $PositionStore> = $Reader::with_capacity($fastq, cap).set_store();
+                    let mut $reader = make_reader!($ReaderBuilder, $fastq, $PositionStore, cap);
                     $block
                 }
             }) {
@@ -35,7 +35,7 @@ impl_common_tests!($input, $expected, RecordSet, test_reader, validate_ref, $nex
 
 #[test]
 fn invalid_start() {
-    let mut reader: $Reader<_, _, $PositionStore> = $Reader::new(&b"\r\nid\nATGC\n"[..]).set_store();
+    let mut reader = make_reader!($ReaderBuilder, &b"\r\nid\nATGC\n"[..], $PositionStore);
     let rec = reader.next().unwrap();
     let err = rec.err().expect("Should be an error");
     assert_matches!(err.kind(), $ErrorKind::InvalidStart { pos: _, found: b'i' });
@@ -51,7 +51,7 @@ fn invalid_start() {
 #[test]
 fn policy() {
     let p = seq_io::policy::DoubleUntilLimited::new(2, 5);
-    let mut reader: $Reader<_, _, $PositionStore> = $Reader::with_capacity(&b">id\nAT\nGC\n"[..], 3).set_policy(p).set_store();
+    let mut reader = make_reader!($ReaderBuilder, &b">id\nAT\nGC\n"[..], $PositionStore, 3, p);
     let err = reader.next().unwrap().unwrap_err();
     assert_matches!(err.kind(), $ErrorKind::BufferLimit);
 }
@@ -59,21 +59,21 @@ fn policy() {
 #[test]
 fn none_after_err() {
     let p = seq_io::policy::DoubleUntilLimited::new(2, 3);
-    let mut reader: $Reader<_, _, $PositionStore> = $Reader::with_capacity(&b">id\nATGC\n"[..], 3).set_policy(p).set_store();
+    let mut reader = make_reader!($ReaderBuilder, &b">id\nATGC\n"[..], $PositionStore, 3, p);
     assert!(reader.next().unwrap().is_err());
     assert!(reader.next().is_none());
 }
 
 #[test]
 fn empty_lines_end() {
-    let mut reader: $Reader<_, _, $PositionStore> = $Reader::new(&b">id\nATGC\n\n\n\n\n\n\n\n\n"[..]).set_store();
+    let mut reader = make_reader!($ReaderBuilder, &b">id\nATGC\n\n\n\n\n\n\n\n\n"[..], $PositionStore);
     assert_eq!(reader.next().unwrap().unwrap().id_bytes(), b"id");
     assert!(reader.next().is_none());
 }
 
 #[test]
 fn no_newline_end() {
-    let mut reader: $Reader<_, _, $PositionStore> = $Reader::new(&b">id\nATGC"[..]).set_store();
+    let mut reader = make_reader!($ReaderBuilder, &b">id\nATGC"[..], $PositionStore);
     assert_eq!(reader.next().unwrap().unwrap().id_bytes(), b"id");
     assert!(reader.next().is_none());
 }

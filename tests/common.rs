@@ -1,4 +1,24 @@
 #[macro_export]
+macro_rules! make_reader {
+    ($Builder:ident, $inner:expr, $PosStore:path) => {
+        $Builder::new().pos_store::<$PosStore>().from_reader($inner)
+    };
+    ($Builder:ident, $inner:expr, $PosStore:path, $cap:expr) => {
+        $Builder::new()
+            .pos_store::<$PosStore>()
+            .capacity($cap)
+            .from_reader($inner)
+    };
+    ($Builder:ident, $inner:expr, $PosStore:path, $cap:expr, $policy:expr) => {
+        $Builder::new()
+            .pos_store::<$PosStore>()
+            .capacity($cap)
+            .buf_policy($policy)
+            .from_reader($inner)
+    };
+}
+
+#[macro_export]
 macro_rules! validate_record {
     ($record:expr, $exp:expr) => {
         assert_eq!($record.id(), $exp.id, "id mismatch");

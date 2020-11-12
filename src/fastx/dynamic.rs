@@ -77,8 +77,7 @@
 //! # Using ReaderBuilder
 //!
 //! [`ReaderBuilder`](ReaderBuilder) allows for applying different configuration
-//! options before the actual reader is created. This is different from the
-//! usual API in this crate, where reader options can be changed after creation.
+//! options before the actual reader is created.
 //!
 //! This example applies several non-default settings at once:
 //!
@@ -99,9 +98,9 @@
 //! let capacity = 32 * 1024 * 1024;
 //!
 //! let mut reader = ReaderBuilder::new()
-//!     .set_policy(policy)
-//!     .set_capacity(capacity)
-//!     .set_multiline_fastq(true)
+//!     .buf_policy(policy)
+//!     .capacity(capacity)
+//!     .multiline_fastq(true)
 //!     .from_reader(&fastq[..])
 //!     .unwrap()
 //!     .expect("empty input");
@@ -155,7 +154,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::path::Path;
 
-use crate::core::{BufReader, PositionStore, BUFSIZE};
+use crate::core::{BufReader, QualRecordPosition, BUFSIZE};
 use crate::fastx::{recognize_format, LineStore, SeqFormat};
 use crate::policy::{BufPolicy, StdPolicy};
 use crate::{fasta, fastq};
@@ -197,7 +196,7 @@ where
     R: io::Read + 's,
 {
     ReaderBuilder::new()
-        .set_multiline_fastq(multiline_fastq)
+        .multiline_fastq(multiline_fastq)
         .from_reader(reader)
 }
 
@@ -213,35 +212,29 @@ where
     P: AsRef<Path> + 's,
 {
     ReaderBuilder::new()
-        .set_multiline_fastq(multiline_fastq)
+        .multiline_fastq(multiline_fastq)
         .from_path(path)
 }
 
 macro_rules! get_reader {
     ($builder:ident, $reader:expr, $ReaderType:ident) => {{
-        let mut buf_reader = BufReader::with_capacity($reader, $builder.capacity);
+        let multiline_fastq = $builder.multiline_fastq;
+        let mut buf_reader =
+            BufReader::with_capacity($reader, $builder.capacity).set_policy($builder.buf_policy);
         recognize_format(&mut buf_reader)?
             .map(|(fmt, (byte, line))| {
                 let out: Box<dyn $ReaderType<_, _, _>> = match fmt {
-                    SeqFormat::FASTA => Box::new(
-                        fasta::Reader::from_buf_reader(buf_reader, byte, line)
-                            .set_policy($builder.buf_policy)
-                            .set_store(),
-                    ),
+                    SeqFormat::FASTA => {
+                        Box::new(fasta::Reader::from_buf_reader(buf_reader, byte, line))
+                    }
                     SeqFormat::FASTQ => {
-                        if $builder.multiline_fastq {
-                            Box::new(
-                                fastq::multiline::Reader::from_buf_reader(buf_reader, byte, line)
-                                    .set_policy($builder.buf_policy)
-                                    .set_store(),
-                            )
+                        if multiline_fastq {
+                            Box::new(fastq::multiline::Reader::from_buf_reader(
+                                buf_reader, byte, line,
+                            ))
                         } else {
                             //  println!("new fastq {} {}", byte, line);
-                            Box::new(
-                                fastq::Reader::from_buf_reader(buf_reader, byte, line)
-                                    .set_policy($builder.buf_policy)
-                                    .set_store(),
-                            )
+                            Box::new(fastq::Reader::from_buf_reader(buf_reader, byte, line))
                         }
                     }
                 };
@@ -255,7 +248,7 @@ macro_rules! get_reader {
 /// or [`FastxSeekReader`](FastxReader)
 /// with various configuration options.
 #[derive(Debug)]
-pub struct ReaderBuilder<P: BufPolicy = StdPolicy, S: PositionStore = LineStore> {
+pub struct ReaderBuilder<P: BufPolicy = StdPolicy, S: QualRecordPosition = LineStore> {
     buf_policy: P,
     _store: PhantomData<S>,
     capacity: usize,
@@ -278,7 +271,7 @@ impl ReaderBuilder {
 impl<P, S> ReaderBuilder<P, S>
 where
     P: BufPolicy,
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     /// Creates a new [`FastxReader`](FastxReader)
     /// with the current configuration of the builder.
@@ -325,11 +318,11 @@ where
     }
 
     /// Creates a new reader with a given
-    /// [`core::PositionStore`](crate::core::PositionStore)
+    /// [`core::QualRecordPosition`](crate::core::QualRecordPosition)
     /// as defined in the type argument of the method. The method consumes
     /// the reader and returns a new `Reader` instance.
     #[inline]
-    pub fn set_store<T: crate::core::PositionStore>(self) -> ReaderBuilder<P, T> {
+    pub fn pos_store<T: QualRecordPosition>(self) -> ReaderBuilder<P, T> {
         ReaderBuilder {
             buf_policy: self.buf_policy,
             _store: PhantomData,
@@ -342,7 +335,7 @@ where
     /// current reader. The method consumes the reader and returns a new
     /// `Reader` instance.
     #[inline]
-    pub fn set_policy<T: crate::policy::BufPolicy>(self, buf_policy: T) -> ReaderBuilder<T, S> {
+    pub fn buf_policy<T: crate::policy::BufPolicy>(self, buf_policy: T) -> ReaderBuilder<T, S> {
         ReaderBuilder {
             buf_policy,
             _store: self._store,
@@ -353,7 +346,7 @@ where
 
     /// Sets a reader capacity.
     #[inline]
-    pub fn set_capacity(mut self, cap: usize) -> Self {
+    pub fn capacity(mut self, cap: usize) -> Self {
         self.capacity = cap;
         self
     }
@@ -363,7 +356,7 @@ where
     /// [`fastq::multiline::Reader`](crate::fastq::multiline::Reader)
     /// in the case of FASTQ input.
     #[inline]
-    pub fn set_multiline_fastq(mut self, multiline: bool) -> Self {
+    pub fn multiline_fastq(mut self, multiline: bool) -> Self {
         self.multiline_fastq = multiline;
         self
     }
@@ -379,13 +372,19 @@ pub trait FastxReader<R, P, S>
 where
     R: io::Read,
     P: BufPolicy,
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     /// Returns the next [`fastx::RefRecord`](crate::fastx::RefRecord), if any.
     fn next_fastx(&mut self) -> Option<Result<RefRecord<S>>>;
 
     /// Updates a [`fastx::RecordSet`](crate::fastx::RecordSet) with new data.
     fn read_record_set_fastx(&mut self, record_set: &mut RecordSet<S>) -> Result<bool>;
+
+    fn read_record_set_exact_fastx(
+        &mut self,
+        record_set: &mut crate::fastx::RecordSet<S>,
+        n_records: usize,
+    ) -> crate::fastx::Result<bool>;
 
     /// Returns the sequence format (`SeqFormat::FASTA` or `SeqFormat::FASTQ`)
     /// if known. For FASTA / FASTQ readers, the format is known in the
@@ -420,7 +419,7 @@ where
 // where
 //     R: io::Read,
 //     P: BufPolicy,
-//     S: PositionStore,
+//     S: QualRecordPosition,
 // {
 //     fn next_fastx(&mut self) -> Option<Result<RefRecord<S>>> {
 //         (**self).next_fastx()
@@ -456,7 +455,7 @@ pub trait FastxSeekReader<R, P, S>: FastxReader<R, P, S>
 where
     R: io::Read + io::Seek,
     P: BufPolicy,
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     /// Seeks to a specified position. Equivalent to the `seek()` method of the
     /// individual readers.
@@ -468,7 +467,7 @@ pub struct RecordsIter<'a, R, P, S>
 where
     P: crate::policy::BufPolicy + 'a,
     R: std::io::Read + 'a,
-    S: crate::core::PositionStore + 'a,
+    S: QualRecordPosition + 'a,
 {
     rdr: &'a mut dyn FastxReader<R, P, S>,
 }
@@ -477,7 +476,7 @@ impl<'a, R, P, S> RecordsIter<'a, R, P, S>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: QualRecordPosition,
 {
     #[inline]
     pub(crate) fn new(rdr: &'a mut dyn FastxReader<R, P, S>) -> Self {
@@ -489,7 +488,7 @@ impl<'a, R, P, S> Iterator for RecordsIter<'a, R, P, S>
 where
     P: crate::policy::BufPolicy + 'a,
     R: std::io::Read + 'a,
-    S: crate::core::PositionStore,
+    S: QualRecordPosition,
 {
     type Item = Result<OwnedRecord>;
     #[inline]
@@ -505,7 +504,7 @@ pub struct RecordsIntoIter<'a, R, P, S>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: QualRecordPosition,
 {
     rdr: Box<dyn FastxReader<R, P, S> + 'a>,
     _s: std::marker::PhantomData<S>,
@@ -515,7 +514,7 @@ impl<'a, R, P, S> RecordsIntoIter<'a, R, P, S>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: QualRecordPosition,
 {
     #[inline]
     pub(crate) fn new(rdr: Box<dyn FastxReader<R, P, S> + 'a>) -> Self {
@@ -530,7 +529,7 @@ impl<'a, R, P, S> Iterator for RecordsIntoIter<'a, R, P, S>
 where
     P: crate::policy::BufPolicy,
     R: std::io::Read,
-    S: crate::core::PositionStore,
+    S: QualRecordPosition,
 {
     type Item = Result<OwnedRecord>;
     #[inline]

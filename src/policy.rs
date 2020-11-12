@@ -18,10 +18,10 @@
 //! ```no_run
 //! use seq_io::fasta::Reader;
 //! use seq_io::policy::DoubleUntil;
+//! use std::io::stdin;
 //!
 //! let policy = DoubleUntil(64 * 1024 * 1024);
-//! let mut reader = Reader::from_path("input.fasta").unwrap()
-//!     .set_policy(policy);
+//! let mut reader = Reader::with_buf_policy(stdin(), policy);
 //! // (...)
 //! ```
 //!
@@ -52,7 +52,7 @@
 //!     }
 //! }
 //!
-//! let mut reader = Reader::new(stdin()).set_policy(Max1G);
+//! let mut reader = Reader::with_buf_policy(stdin(), Max1G);
 //!
 //! while let Some(record) = reader.next() {
 //!     println!("{}", record.unwrap().id().unwrap());

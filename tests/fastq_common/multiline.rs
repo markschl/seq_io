@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! impl_fastq_multi_tests {
-    ($Reader:ident, $PositionStore:ty, $RecordSet:ty, $ErrorKind:ident, $validate_ref:path, $parallel_reader_func:path) => {
+    ($Reader:ident, $PositionStore:path, $RecordSet:ty, $ErrorKind:ident, $validate_ref:path, $parallel_reader_func:path) => {
 
 use seq_io::Position;
 //use seq_io::parallel::parallel_fastq;

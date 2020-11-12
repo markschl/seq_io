@@ -14,6 +14,10 @@ Still, there are a few API changes (list may be incomplete):
   `use seq_io::prelude::*` on top.
 * The behaviour of readers changed slightly in some cases. Refer to the `fasta`
   and `fastq` module docs for details on the new behaviour.
+* Sequence record coordinates are now stored in objects with a defined API,
+  which can be exchanged and allow implementing indexed readers.
+* Advanced reader configuration is now done using `ReaderBuilder` objects,
+  which reside in the same module as the `Reader`s.
 * The writing functions were renamed and their number reduced by combining 
   functionality.
 * Error types now have an associated `ErrorKind`, which is similar in all
@@ -25,6 +29,7 @@ Still, there are a few API changes (list may be incomplete):
 **[Still not done:]**
 
 * Review the API
+* Implement indexed readers.
 * Evaluate, whether adding a `min_records()` method to `BufPolicy` will help.
   In cases where only a few records are in the buffer, frequent relocations are
   necessary, which could hurt performance -> buffer should be enlarged.
@@ -32,6 +37,8 @@ Still, there are a few API changes (list may be incomplete):
   processing.
 * Evaluate even more code with fuzzing
 * Resolve TODOs, write more tests, remove println! in comments.
+* Allow writing non-UNIX line endings (needs configurable a Writer objects).
+* Eventually merge all error types into one?
 
 ## v0.3.1 [2020-10-18]
 

@@ -1,4 +1,4 @@
-use crate::core::{LinePositionIterKind, PositionStore, SearchPos};
+use crate::core::{LinePositionIterKind, QualRecordPosition, SearchPos, SeqRecordPosition};
 use crate::LinePositionIter;
 use serde::{Deserialize, Serialize};
 use std::str;
@@ -10,25 +10,17 @@ pub struct RangeStore {
     pos: [usize; 5],
 }
 
-impl PositionStore for RangeStore {
-    type SeqLinesType = LinePositionIterKind;
-    type QualLinesType = LinePositionIterKind;
+impl SeqRecordPosition for RangeStore {
+    type SeqLinesKind = LinePositionIterKind;
 
     #[inline]
-    fn move_to_start(&mut self, search_pos: SearchPos, offset: usize) {
-        for i in 0..search_pos as usize + 1 {
-            self.pos[i] -= offset;
-        }
+    fn set_record_start(&mut self, pos: usize) {
+        self.pos[0] = pos;
     }
 
     #[inline]
     fn record_start(&self) -> usize {
         self.pos[0]
-    }
-
-    #[inline]
-    fn set_record_start(&mut self, start: usize) {
-        self.pos[0] = start;
     }
 
     #[inline]
@@ -50,6 +42,57 @@ impl PositionStore for RangeStore {
     }
 
     #[inline]
+    fn seq_end(&self) -> usize {
+        self.sep_pos()
+    }
+
+    #[inline]
+    fn set_record_end(&mut self, end: usize, _: bool) {
+        self.pos[4] = end;
+    }
+
+    #[inline]
+    fn record_end(&self) -> usize {
+        self.pos[4]
+    }
+
+    // TODO: does not work with normal FASTA (line numbers not correctly incremented)
+    #[inline]
+    fn num_lines(&self) -> usize {
+        4
+    }
+
+    #[inline]
+    fn num_seq_lines(&self) -> usize {
+        1
+    }
+
+    #[inline]
+    fn seq_lines<'s>(&'s self, buffer: &'s [u8]) -> LinePositionIter<'s> {
+        // TODO: does not work with multi-line FASTQ
+        //LineSearchIter::new(self.seq(buffer), false)
+        LinePositionIter::new(buffer, &self.pos[1..=2])
+    }
+
+    #[inline]
+    fn apply_offset(&mut self, offset: isize, search_pos: Option<SearchPos>) {
+        // TODO: correct?
+        let range_end = search_pos.unwrap_or(SearchPos::QUAL) as usize;
+        for i in 0..=range_end {
+            self.pos[i] = (self.pos[i] as isize + offset) as usize;
+        }
+    }
+
+    #[inline]
+    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
+        search_pos as usize - !has_line as usize
+    }
+}
+
+impl QualRecordPosition for RangeStore {
+    type QualLinesKind = LinePositionIterKind;
+
+    #[inline]
     fn set_sep_pos(&mut self, pos: usize, _: bool) {
         self.pos[2] = pos;
     }
@@ -63,6 +106,9 @@ impl PositionStore for RangeStore {
     fn set_qual_start(&mut self, pos: usize) {
         self.pos[3] = pos;
     }
+
+    #[inline]
+    fn add_qual_line_start(&mut self, _: usize) {}
 
     #[inline]
     fn qual_start(&self) -> usize {
@@ -80,41 +126,8 @@ impl PositionStore for RangeStore {
     }
 
     #[inline]
-    fn set_record_end(&mut self, pos: usize, _: bool) {
-        self.pos[4] = pos;
-    }
-
-    #[inline]
-    fn record_end(&self) -> usize {
-        self.pos[4]
-    }
-
-    // TODO: does not work with multiline-FASTQ (line numbers not correctly incremented)
-    #[inline]
-    fn num_lines(&self) -> usize {
-        4
-    }
-
-    #[inline]
-    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
-        search_pos as usize - !has_line as usize
-    }
-
-    #[inline]
-    fn num_seq_lines(&self) -> usize {
-        1
-    }
-
-    #[inline]
     fn num_qual_lines(&self) -> usize {
         1
-    }
-
-    #[inline]
-    fn seq_lines<'s>(&'s self, buffer: &'s [u8]) -> LinePositionIter<'s> {
-        // TODO: does not work with multi-line FASTQ
-        //LineSearchIter::new(self.seq(buffer), false)
-        LinePositionIter::new(buffer, &self.pos[1..=2])
     }
 
     #[inline]

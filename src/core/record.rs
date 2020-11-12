@@ -1,9 +1,9 @@
-use crate::PositionStore;
+use std::clone::Clone;
 
 // used only internally
 pub(crate) trait RecordSet<S>
 where
-    S: PositionStore,
+    S: Clone + Default,
 {
     fn clear(&mut self);
     fn set_buffer(&mut self, buffer: &[u8]);
@@ -13,9 +13,10 @@ where
 }
 
 macro_rules! impl_recordset {
-    ($RefRecord:ident, $DefaultStore:ident, $module_path:expr, $format:expr) => {
+    ($RefRecord:ident, $RecordStoreTrait:path, $DefaultStore:ident, $module_path:expr, $format:expr) => {
         _impl_recordset!(
             $RefRecord,
+            $RecordStoreTrait,
             $DefaultStore,
             concat!("use seq_io::", $module_path, "::{Reader, RecordSet};"),
             concat!("let seq_path = \"sequences.", $format, "\";")
@@ -24,7 +25,7 @@ macro_rules! impl_recordset {
 }
 
 macro_rules! _impl_recordset {
-    ($RefRecord:ident, $DefaultStore:ident, $imports:expr, $seq_path:expr) => {
+    ($RefRecord:ident, $RecordStoreTrait:path, $DefaultStore:ident, $imports:expr, $seq_path:expr) => {
         /// Set of sequence records that owns it's buffer
         /// and knows the positions of each record.
         ///
@@ -45,7 +46,7 @@ macro_rules! _impl_recordset {
         #[derive(Clone, Debug, Serialize, Deserialize, Default)]
         pub struct RecordSet<S = $DefaultStore>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             buffer: Vec<u8>,
             positions: Vec<S>,
@@ -54,7 +55,7 @@ macro_rules! _impl_recordset {
 
         impl<S> RecordSet<S>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             /// Returns the number of records in the record set.
             #[inline]
@@ -71,7 +72,7 @@ macro_rules! _impl_recordset {
 
         impl<S> crate::core::RecordSet<S> for RecordSet<S>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             #[inline]
             fn clear(&mut self) {
@@ -110,7 +111,7 @@ macro_rules! _impl_recordset {
 
         impl<'a, S> iter::IntoIterator for &'a RecordSet<S>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             type Item = $RefRecord<'a, S>;
             type IntoIter = RecordSetIter<'a, S>;
@@ -126,7 +127,7 @@ macro_rules! _impl_recordset {
         /// Iterator over record sets
         pub struct RecordSetIter<'a, S = $DefaultStore>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             buffer: &'a [u8],
             pos: slice::Iter<'a, S>,
@@ -134,7 +135,7 @@ macro_rules! _impl_recordset {
 
         impl<'a, S> Iterator for RecordSetIter<'a, S>
         where
-            S: crate::PositionStore,
+            S: $RecordStoreTrait,
         {
             type Item = RefRecord<'a, S>;
 
@@ -150,13 +151,13 @@ macro_rules! _impl_recordset {
 }
 
 macro_rules! impl_records_iter {
-    ($Reader:ty, $OwnedRecord:ty, $Error:ty) => {
+    ($Reader:ty, $RecordStoreTrait:path, $OwnedRecord:ty, $Error:ty) => {
         /// Borrowed iterator of `OwnedRecord`
         pub struct RecordsIter<'a, R, P, S>
         where
             P: crate::policy::BufPolicy + 'a,
             R: std::io::Read + 'a,
-            S: crate::core::PositionStore + 'a,
+            S: $RecordStoreTrait + 'a,
         {
             rdr: &'a mut $Reader,
         }
@@ -165,7 +166,7 @@ macro_rules! impl_records_iter {
         where
             R: std::io::Read,
             P: crate::policy::BufPolicy,
-            S: crate::core::PositionStore,
+            S: $RecordStoreTrait,
         {
             pub(crate) fn new(rdr: &'a mut $Reader) -> Self {
                 RecordsIter { rdr }
@@ -176,7 +177,7 @@ macro_rules! impl_records_iter {
         where
             P: crate::policy::BufPolicy + 'a,
             R: std::io::Read + 'a,
-            S: crate::core::PositionStore,
+            S: $RecordStoreTrait,
         {
             type Item = std::result::Result<$OwnedRecord, $Error>;
             fn next(&mut self) -> Option<Self::Item> {
@@ -189,7 +190,7 @@ macro_rules! impl_records_iter {
         where
             R: std::io::Read,
             P: crate::policy::BufPolicy,
-            S: crate::core::PositionStore,
+            S: $RecordStoreTrait,
         {
             rdr: $Reader,
             _s: std::marker::PhantomData<S>,
@@ -199,7 +200,7 @@ macro_rules! impl_records_iter {
         where
             R: std::io::Read,
             P: crate::policy::BufPolicy,
-            S: crate::core::PositionStore,
+            S: $RecordStoreTrait,
         {
             pub(crate) fn new(rdr: $Reader) -> Self {
                 RecordsIntoIter {
@@ -213,7 +214,7 @@ macro_rules! impl_records_iter {
         where
             P: crate::policy::BufPolicy,
             R: std::io::Read,
-            S: crate::core::PositionStore,
+            S: $RecordStoreTrait,
         {
             type Item = std::result::Result<$OwnedRecord, $Error>;
             fn next(&mut self) -> Option<Self::Item> {

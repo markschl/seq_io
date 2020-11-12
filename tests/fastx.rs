@@ -14,11 +14,11 @@ mod fastq_common;
 mod seq;
 
 mod fasta {
-    use seq_io::fastx::{ErrorKind, Reader, RecordSet};
+    use seq_io::fastx::{ErrorKind, LineStore, ReaderBuilder, RecordSet};
     use seq_io::prelude::*;
     impl_fasta_standard_tests!(
-        Reader,
-        seq_io::fasta::LineStore,
+        ReaderBuilder,
+        LineStore,
         RecordSet,
         ErrorKind,
         seq_io::parallel::read_process_fastx_records
@@ -26,11 +26,11 @@ mod fasta {
 }
 
 mod fasta_multi_qual {
-    use seq_io::fastx::multiline_qual::Reader;
+    use seq_io::fastx::multiline_qual::ReaderBuilder;
     use seq_io::fastx::{ErrorKind, LineStore, RecordSet};
     use seq_io::prelude::*;
     impl_fasta_standard_tests!(
-        Reader,
+        ReaderBuilder,
         LineStore,
         RecordSet,
         ErrorKind,
@@ -49,10 +49,10 @@ macro_rules! validate_fastx_ref {
 }
 
 mod fastq {
-    use seq_io::fastx::{ErrorKind, Reader, RecordSet};
+    use seq_io::fastx::{ErrorKind, ReaderBuilder, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_standard_tests!(
-        Reader,
+        ReaderBuilder,
         seq_io::fastq::RangeStore,
         RecordSet,
         ErrorKind,
@@ -62,10 +62,10 @@ mod fastq {
 }
 
 mod fastq_dyn {
-    use seq_io::fastx::{ErrorKind, Reader, RecordSet};
+    use seq_io::fastx::{ErrorKind, ReaderBuilder, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_standard_tests!(
-        Reader,
+        ReaderBuilder,
         seq_io::fastq::RangeStore,
         RecordSet,
         ErrorKind,
@@ -75,10 +75,10 @@ mod fastq_dyn {
 }
 
 mod fastq_linestore {
-    use seq_io::fastx::{ErrorKind, Reader, RecordSet};
+    use seq_io::fastx::{ErrorKind, ReaderBuilder, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_standard_tests!(
-        Reader,
+        ReaderBuilder,
         seq_io::fastx::LineStore,
         RecordSet,
         ErrorKind,
@@ -88,11 +88,11 @@ mod fastq_linestore {
 }
 
 mod fastq_multiline {
-    use seq_io::fastx::multiline_qual::Reader;
+    use seq_io::fastx::multiline_qual::ReaderBuilder;
     use seq_io::fastx::{ErrorKind, LineStore, RecordSet};
     use seq_io::prelude::*;
     impl_fastq_multi_tests!(
-        Reader,
+        ReaderBuilder,
         LineStore,
         RecordSet,
         ErrorKind,
@@ -111,8 +111,8 @@ mod fastx_dynamic_fastq {
             for cap in 5..80 {
                 if let Err(_) = std::panic::catch_unwind(|| {
                     let mut $reader = ReaderBuilder::new()
-                        .set_capacity(cap)
-                        .set_store::<seq_io::fastx::LineStore>()
+                        .capacity(cap)
+                        .pos_store::<seq_io::fastx::LineStore>()
                         .from_reader($content)
                         .unwrap()
                         .expect("Input empty");
@@ -163,8 +163,8 @@ mod fastx_dynamic_fastq {
     fn empty_recognition() {
         let empty = b"\n\n\r\n\n\n\n\n\n\n\n";
         let reader = ReaderBuilder::new()
-            .set_capacity(3)
-            .set_store::<seq_io::fastx::LineStore>()
+            .capacity(3)
+            .pos_store::<seq_io::fastx::LineStore>()
             .from_reader(&empty[..])
             .unwrap();
         assert!(reader.is_none());

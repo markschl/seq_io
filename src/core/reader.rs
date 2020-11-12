@@ -3,21 +3,24 @@
 macro_rules! impl_reader {
     (
         $Reader:ident, $RefRecord:ty, $OwnedRecord:ty, $RecordSet:ty, $Error:ty,
-        $DefaultPositionStore:ty, $multiline_fasta:expr, $multiline_fastq:expr,
+        $RecordStoreTrait:path, $DefaultPositionStore:ty,
+        $multiline_fasta:expr, $multiline_fastq:expr,
         // specific args needed for documentation
         $format:expr, ($($mod_path:expr),*), $seq1:expr, $seq2:expr,
         [$seq2_owned1:expr, $seq2_owned2:expr]
     ) => {
         _impl_reader!(
             $Reader, $RefRecord, $OwnedRecord, $RecordSet, $Error,
-            $DefaultPositionStore, $multiline_fasta, $multiline_fastq,
-            doc_import!(($($mod_path),*)),
-            doc_import!(($($mod_path),*), "RecordSet"),
-            doc_import!(($($mod_path),*), "OwnedRecord"),
+            $RecordStoreTrait, $DefaultPositionStore, $multiline_fasta, $multiline_fastq,
+            doc_import!(($($mod_path),*), "{ReaderBuilder, Reader}"),
+            doc_import!(($($mod_path),*), "Reader"),
+            doc_import!(($($mod_path),*), "Reader", "RecordSet"),
+            doc_import!(($($mod_path),*), "Reader", "OwnedRecord"),
             concat!("let seq_path = \"seqs.", $format, "\";"),
             concat!("let seq = b\"", $seq1, "\";"),
             concat!("let seq = b\"", $seq2, "\";"),
             concat!("vec![\n", $seq2_owned1, ",\n", $seq2_owned2, "\n]);"),
+            concat!("[", stringify!($RecordStoreTrait), "](", stringify!($RecordStoreTrait), ")"),
             doc_link!(($($mod_path),*), "RefRecord"),
             doc_link!(($($mod_path),*), "Record"),
             doc_link!(($($mod_path),*), "RecordSet")
@@ -35,26 +38,155 @@ macro_rules! doc_link {
 }
 
 macro_rules! doc_import {
-    (($module_path:expr), $rec_name:expr) => {
-        concat!("use seq_io::", $module_path, "::{Reader, ", $rec_name, "};")
+    (($module_path:expr), $name:expr, $rec_name:expr) => {
+        concat!(
+            "use seq_io::",
+            $module_path,
+            "::{",
+            $name,
+            ", ",
+            $rec_name,
+            "};"
+        )
     };
-    (($rdr_path:expr, $record_path:expr), $rec_name:expr) => {
+    (($rdr_path:expr, $record_path:expr), $name:expr, $rec_name:expr) => {
         concat!(
             "use seq_io::",
             $rdr_path,
-            "::Reader;\nuse seq_io::",
+            "::",
+            $name,
+            ";\nuse seq_io::",
             $record_path,
             "::",
             $rec_name,
             ";"
         )
     };
-    (($module_path:expr)) => {
-        concat!("use seq_io::", $module_path, "::Reader;")
+    (($module_path:expr), $name:expr) => {
+        concat!("use seq_io::", $module_path, "::", $name, ";")
     };
-    (($rdr_path:expr, $_:expr)) => {
-        concat!("use seq_io::", $rdr_path, "::Reader;")
+    (($rdr_path:expr, $_:expr), $name:expr) => {
+        concat!("use seq_io::", $rdr_path, "::", $name, ";")
     };
+}
+
+macro_rules! impl_reader_builder {
+    ($Reader:ident, $RecordStoreTrait:path, $DefaultPositionStore:ty,
+    $import_builder:expr, $seqfile:expr, $record_store_link:expr) => {
+
+/// Allows building a [`Reader`](Reader)
+/// with various configuration options.
+#[derive(Debug)]
+pub struct ReaderBuilder<P: crate::policy::BufPolicy = crate::policy::StdPolicy, S: $RecordStoreTrait = $DefaultPositionStore> {
+    buf_policy: P,
+    _store: std::marker::PhantomData<S>,
+    capacity: usize,
+}
+
+impl ReaderBuilder {
+    /// Creates a new `ReaderBuilder`
+    #[inline]
+    pub fn new() -> Self {
+        ReaderBuilder {
+            buf_policy: crate::policy::StdPolicy,
+            _store: std::marker::PhantomData,
+            capacity: crate::core::BUFSIZE,
+        }
+    }
+}
+
+impl<P, S> ReaderBuilder<P, S>
+where
+    P: crate::policy::BufPolicy,
+    S: $RecordStoreTrait,
+{
+    /// Creates a new [`Reader`](Reader)
+    /// with the current configuration of the builder.
+    #[inline]
+    pub fn from_reader<'s, R>(self, reader: R) -> $Reader<R, P, S>
+    where
+        R: std::io::Read + 's,
+        P: 's,
+        S: 's,
+    {
+        $Reader::_new(reader, self.capacity, self.buf_policy)
+    }
+
+    /// Creates a new [`Reader`](Reader) from the given path
+    /// with the current configuration of the builder.
+    #[inline]
+    pub fn from_path<'s, Q>(
+        self,
+        path: Q,
+    ) -> std::io::Result<$Reader<std::fs::File, P, S>>
+    where
+        Q: AsRef<std::path::Path> + 's,
+        P: 's,
+        S: 's,
+    {
+        std::fs::File::open(path).map(|f| self.from_reader(f))
+    }
+
+    /// Creates a new reader with a given
+    #[doc = $record_store_link]
+    /// as defined in the type argument of the method. The method consumes
+    /// the reader and returns a new `Reader` instance.
+    ///
+    /// # Example:
+    ///
+    /// This example makes the reader use `seq_io::fastx::LineStore` instead
+    /// of the default one.
+    ///
+    /// ```no_run
+    /// # fn main()  -> Result<(), std::io::Error> {
+    /// use seq_io::prelude::*;
+    #[doc = $import_builder]
+    /// use seq_io::fastx::LineStore;
+    ///
+    #[doc = $seqfile]
+    ///
+    /// let mut reader = ReaderBuilder::new()
+    ///     .pos_store::<LineStore>()
+    ///     .from_path(seq_path)?;
+    ///
+    /// // or:
+    ///
+    /// let mut reader: Reader<_, _, LineStore> = ReaderBuilder::new()
+    ///     .pos_store::<LineStore>()
+    ///     .from_path(seq_path)?;
+    /// // ...
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn pos_store<T: $RecordStoreTrait>(self) -> ReaderBuilder<P, T> {
+        ReaderBuilder {
+            buf_policy: self.buf_policy,
+            _store: std::marker::PhantomData,
+            capacity: self.capacity,
+        }
+    }
+
+    /// Applies a [`BufPolicy`](crate::policy::BufPolicy) to the
+    /// current reader. The method consumes the reader and returns a new
+    /// `Reader` instance.
+    #[inline]
+    pub fn buf_policy<T: crate::policy::BufPolicy>(self, buf_policy: T) -> ReaderBuilder<T, S> {
+        ReaderBuilder {
+            buf_policy,
+            _store: self._store,
+            capacity: self.capacity,
+        }
+    }
+
+    /// Sets a reader capacity.
+    #[inline]
+    pub fn capacity(mut self, cap: usize) -> Self {
+        self.capacity = cap;
+        self
+    }
+}
+}
 }
 
 // Inner macro for creating Reader. Needs a few documentation lines to be
@@ -62,15 +194,19 @@ macro_rules! doc_import {
 macro_rules! _impl_reader {
     (
         $Reader:ident, $RefRecord:ty, $OwnedRecord:ty, $RecordSet:ty, $Error:ty,
-         $DefaultPositionStore:ty, $multiline_fasta:expr, $multiline_fastq:expr,
-         // the following params are used for documentation
-         $import_rdr:expr, $import_rset:expr, $import_owned:expr,
-         $seqfile:expr, $seq1:expr, $seq2:expr, $seq2_owned_vec:expr,
-         $refrec_link:expr, $record_link:expr, $rset_link:expr
+        $RecordStoreTrait:path, $DefaultPositionStore:ty,
+        $multiline_fasta:expr, $multiline_fastq:expr,
+        // the following params are used for documentation
+        $import_builder:expr, $import_rdr:expr, $import_rset:expr, $import_owned:expr,
+        $seqfile:expr, $seq1:expr, $seq2:expr, $seq2_owned_vec:expr,
+        $record_store_link:expr,
+        $refrec_link:expr, $record_link:expr, $rset_link:expr
     ) => {
 
-impl_records_iter!($Reader<R, P, S>, $OwnedRecord, $Error);
+impl_records_iter!($Reader<R, P, S>, $RecordStoreTrait, $OwnedRecord, $Error);
 
+impl_reader_builder!($Reader, $RecordStoreTrait, $DefaultPositionStore,
+    $import_builder, $seqfile, $record_store_link);
 
 impl<R> $Reader<R>
 where
@@ -98,14 +234,7 @@ where
     /// capacity is 3.
     #[inline]
     pub fn with_capacity(reader: R, capacity: usize) -> Self {
-        Self::_with_capacity(reader, capacity)
-    }
-
-    /// Creates a new Reader from an already instantiated
-    /// [`BufReader`](crate::core::BufReader).
-    #[inline]
-    pub fn from_buf_reader(rdr: crate::core::BufReader<R>, byte_offset: usize, line_idx: u64) -> Self {
-        Self::_from_buf_reader(rdr, byte_offset, line_idx)
+        Self::_new(reader, capacity, crate::policy::StdPolicy)
     }
 }
 
@@ -129,16 +258,15 @@ impl $Reader<std::fs::File> {
 }
 
 
-impl<R, P, S> $Reader<R, P, S>
+impl<R, S> $Reader<R, crate::policy::StdPolicy, S>
 where
     R: std::io::Read,
-    P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: $RecordStoreTrait,
 {
-    /// Creates a new reader with a given
-    /// [`PositionStore`](crate::core::PositionStore)
-    /// as defined in the type argument of the method. The method consumes
-    /// the reader and returns a new `Reader` instance.
+    /// Creates a new reader with a custom
+    #[doc = $record_store_link]
+    /// type used for storing positional information. If more customization is
+    /// required, use [`ReaderBuilder`](ReaderBuilder) instead.
     ///
     /// # Example:
     ///
@@ -147,38 +275,67 @@ where
     ///
     /// ```no_run
     /// # fn main()  -> Result<(), std::io::Error> {
-    /// use seq_io::prelude::*;
     #[doc = $import_rdr]
     /// use seq_io::fastx::LineStore;
     ///
-    #[doc = $seqfile]
-    /// let mut reader = Reader::from_path(seq_path)?.set_store::<LineStore>();
-    /// // or:
-    /// let mut reader: Reader<_, _, LineStore> = Reader::from_path(seq_path)?.set_store();
+    #[doc = $seq1]
+    ///
+    /// let mut reader: Reader<_, _, LineStore> = Reader::with_pos_store(&seq[..]);
     /// // ...
     /// # Ok(())
     /// # }
-    /// ```
     #[inline]
-    pub fn set_store<T: crate::core::PositionStore>(self) -> Reader<R, P, T> {
-        self._set_store()
+    pub fn with_pos_store(reader: R) -> Self {
+        Self::_new(reader, crate::core::BUFSIZE, crate::policy::StdPolicy)
     }
+}
 
-    /// Applies a [`BufPolicy`](crate::policy::BufPolicy) to the
-    /// current reader. The method consumes the reader and returns a new
-    /// `Reader` instance.
+
+impl<R, P> $Reader<R, P>
+where
+    R: std::io::Read,
+    P: crate::policy::BufPolicy,
+{
+    /// Creates a new reader with the given [`BufPolicy`](crate::policy::BufPolicy)
+    /// applied. If more customization is required, use [`ReaderBuilder`](ReaderBuilder)
+    /// instead.
     #[inline]
-    pub fn set_policy<T: crate::policy::BufPolicy>(self, buf_policy: T) -> Reader<R, T, S> {
-        self._set_policy(buf_policy)
+    pub fn with_buf_policy(reader: R, policy: P) -> Self {
+        Self::_new(reader, crate::core::BUFSIZE, policy)
     }
+}
 
+
+impl<R, P, S> $Reader<R, P, S>
+where
+    R: std::io::Read,
+    P: crate::policy::BufPolicy,
+    S: $RecordStoreTrait,
+{
     /// Returns a reference to the underlying `BufPolicy` of the reader
     #[inline]
-    pub fn policy(&self) -> &P {
+    pub fn buf_policy(&self) -> &P {
         self.inner.policy()
     }
 
-    /// Returns a reader with the given buffer policy applied
+    /// Creates a new Reader from an already instantiated
+    /// [`BufReader`](crate::core::BufReader).
+    /// This is mostly useful if doing format recognition before deciding on
+    /// the exact reader type.
+    #[inline]
+    pub fn from_buf_reader(rdr: crate::core::BufReader<R, P>, byte_offset: usize, line_idx: u64) -> Self {
+        Self::_from_buf_reader(rdr, byte_offset, line_idx)
+    }
+
+    #[inline]
+    fn _next(&mut self, check_lengths: bool) -> Option<crate::fastx::Result<(&[u8], &S)>> {
+        if let Some(fasta) = try_opt!(self._check_is_fasta()) {
+            self.inner.next(fasta, $multiline_fasta, $multiline_fastq, false, check_lengths)
+        } else {
+            None
+        }
+    }
+
     /// Searches the next record and returns a
     #[doc = $refrec_link]
     /// that
@@ -200,12 +357,10 @@ where
     /// ```
     #[inline]
     pub fn next(&mut self) -> Option<super::Result<$RefRecord>> {
-        if let Some(fasta) = try_opt!(self._check_is_fasta()) {
-            self.inner.next(fasta, $multiline_fasta, $multiline_fastq, false, true)
-            .map(|res| res.map(|(buf, pos)| super::RefRecord::new(buf, pos)).map_err(From::from))
-        } else {
-            None
-        }
+        self._next(true).map(|res| {
+            res.map(|(pos, buf)| <$RefRecord>::new(pos, buf))
+                .map_err(std::convert::From::from)
+        })
     }
 
     /// Searches the next FASTQ record and returns a
@@ -224,22 +379,20 @@ where
     /// "swallowing" of a record.
     #[inline]
     pub fn next_unchecked_len(&mut self) -> Option<super::Result<$RefRecord>> {
-        if let Some(fasta) = try_opt!(self._check_is_fasta()) {
-            self.inner.next(fasta, $multiline_fasta, $multiline_fastq, false, false)
-            .map(|res| res.map(|(buf, pos)| super::RefRecord::new(buf, pos)).map_err(From::from))
-        } else {
-            None
-        }
+        self._next(false).map(|res| {
+            res.map(|(pos, buf)| <$RefRecord>::new(pos, buf))
+                .map_err(std::convert::From::from)
+        })
     }
 
     // needs to be generic in order to allow an easy FastxReader impl
     #[inline]
-    fn _read_record_set<T>(&mut self, record_set: &mut T, check_lengths: bool) -> super::Result<bool>
+    fn _read_record_set<T>(&mut self, record_set: &mut T, check_lengths: bool, n_records: Option<usize>) -> super::Result<bool>
     where
         T: crate::core::RecordSet<S>
     {
         if let Some(fasta) = self._check_is_fasta()? {
-            self.inner.read_record_set(record_set, fasta, $multiline_fasta, $multiline_fastq, false, check_lengths)
+            self.inner.read_record_set(record_set, fasta, $multiline_fasta, $multiline_fastq, false, check_lengths, n_records)
             .map_err(From::from)
         } else {
             Ok(false)
@@ -286,7 +439,12 @@ where
     /// ```
     #[inline]
     pub fn read_record_set(&mut self, record_set: &mut $RecordSet) -> super::Result<bool> {
-        self._read_record_set(record_set, true).map_err(From::from)
+        self._read_record_set(record_set, true, None).map_err(From::from)
+    }
+
+    #[inline]
+    pub fn read_record_set_exact(&mut self, record_set: &mut $RecordSet, n_records: usize) -> super::Result<bool> {
+        self._read_record_set(record_set, true, Some(n_records)).map_err(From::from)
     }
 
     /// Returns a borrowed iterator over all FASTA records. The records
@@ -360,7 +518,7 @@ impl<R, P, S> $Reader<R, P, S>
 where
     R: std::io::Read + std::io::Seek,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: $RecordStoreTrait,
 {
     /// Seeks to a specified position.
     /// Keeps the underyling buffer if the seek position is found within it,
@@ -408,13 +566,12 @@ impl<R, P, S> crate::fastx::dynamic::FastxReader<R, P, S> for $Reader<R, P, S>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: crate::core::QualRecordPosition,
 {
     #[inline]
     fn next_fastx(&mut self) -> Option<crate::fastx::Result<crate::fastx::RefRecord<S>>> {
-        self.next().map(|res| {
-            res.map(std::convert::From::from)
-                .map_err(std::convert::From::from)
+        self._next(true).map(|res| {
+            res.map(|(pos, buf)| crate::fastx::RefRecord::new(pos, buf))
         })
     }
 
@@ -423,7 +580,16 @@ where
         &mut self,
         record_set: &mut crate::fastx::RecordSet<S>,
     ) -> crate::fastx::Result<bool> {
-        self._read_record_set(record_set, true).map_err(From::from)
+        self._read_record_set(record_set, true, None).map_err(From::from)
+    }
+
+    #[inline]
+    fn read_record_set_exact_fastx(
+        &mut self,
+        record_set: &mut crate::fastx::RecordSet<S>,
+        n_records: usize,
+    ) -> crate::fastx::Result<bool> {
+        self._read_record_set(record_set, true, Some(n_records)).map_err(From::from)
     }
 
     #[inline]
@@ -456,7 +622,7 @@ impl<R, P, S> crate::fastx::dynamic::FastxSeekReader<R, P, S> for $Reader<R, P, 
 where
     R: std::io::Read + std::io::Seek,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: crate::core::QualRecordPosition,
 {
     #[inline]
     fn seek_fastx(&mut self, pos: &crate::Position) -> std::io::Result<()> {

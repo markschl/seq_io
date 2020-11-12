@@ -1,13 +1,13 @@
 #[macro_export]
 macro_rules! impl_fasta_standard_tests {
-    ($Reader:ident, $PositionStore:ty, $RecordSet:ty, $ErrorKind:ident, $parallel_reader_func:path) => {
+    ($ReaderBuilder:ident, $PositionStore:path, $RecordSet:ty, $ErrorKind:ident, $parallel_reader_func:path) => {
         //use seq_io::parallel::parallel_fastq;
         use crate::fasta_common::{FASTA, FASTA_EXPECTED};
 
         impl_common_fasta_tests!(
             FASTA,
             FASTA_EXPECTED,
-            $Reader,
+            $ReaderBuilder,
             $PositionStore,
             $RecordSet,
             $ErrorKind,
@@ -19,8 +19,7 @@ macro_rules! impl_fasta_standard_tests {
 
         #[test]
         fn no_seq() {
-            let mut reader: $Reader<_, _, $PositionStore> =
-                $Reader::new(&b">id1\n>id2\n"[..]).set_store();
+            let mut reader = make_reader!($ReaderBuilder, &b">id1\n>id2\n"[..], $PositionStore);
             {
                 let r = reader.next().unwrap().unwrap();
                 assert_eq!(r.id_bytes(), b"id1");

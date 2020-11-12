@@ -11,9 +11,6 @@
 //!   the only advantage of this parser is that it runs faster than the multi-
 //!   line parser.
 //!
-//! Multi-line FASTQ is problematic since the quality scores may also contain
-//! `@`.
-//!
 //! # Example
 //!
 //! The following example shows how to use [`Reader`](Reader).

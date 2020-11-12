@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! impl_common_fastq_tests {
-    ($input:expr, $expected:expr, $Reader:ident, $PositionStore:ty, $RecordSet:ty, $ErrorKind:ident, $validate_ref:path,
+    ($input:expr, $expected:expr, $ReaderBuilder:ident, $PositionStore:path, $RecordSet:ty, $ErrorKind:ident, $validate_ref:path,
         $next_fn:ident, $read_record_set_fn:ident, $seek_fn:ident, $parallel_reader_func:path) => {
 
 
@@ -12,7 +12,7 @@ macro_rules! test_reader {
             if let Err(_) = std::panic::catch_unwind(|| {
                 #[allow(unused_mut)]
                 {
-                    let mut $reader: $Reader<_, _, $PositionStore> = $Reader::with_capacity($fastq, cap).set_store();
+                    let mut $reader = make_reader!($ReaderBuilder, $fastq, $PositionStore, cap);
                     $block
                 }
             }) {
@@ -32,8 +32,7 @@ fn policy() {
     let fq = &b"@id\nATGC\n+\nIIII\n"[..];
     for cap in 5..80 {
         let policy = seq_io::policy::DoubleUntilLimited::new(2, 5);
-        let mut reader: $Reader<_, _, $PositionStore> = $Reader::with_capacity(fq, cap).set_store()
-            .set_policy(policy);
+        let mut reader = make_reader!($ReaderBuilder, fq, $PositionStore, cap, policy);
         let res = reader.next().unwrap();
         let err = res.err().expect("Should be an error");
         assert_matches!(err.kind(), $ErrorKind::BufferLimit);

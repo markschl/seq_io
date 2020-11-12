@@ -5,7 +5,7 @@ use std::slice;
 use std::str;
 
 use super::{write, write_iter, write_wrap, write_wrap_iter, LineStore};
-use crate::core::{join_lines, PositionStore};
+use crate::core::{join_lines, join_lines_given, record_head, record_seq, SeqRecordPosition};
 use crate::BaseRecord;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ impl<'a, R: Record> Record for &'a R {
 #[derive(Debug, Clone)]
 pub struct RefRecord<'a, S = LineStore>
 where
-    S: PositionStore,
+    S: SeqRecordPosition,
 {
     pub(crate) buffer: &'a [u8],
     pub(crate) buf_pos: &'a S,
@@ -45,16 +45,16 @@ where
 
 impl<'a, S> BaseRecord for RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: SeqRecordPosition,
 {
     #[inline]
     fn head(&self) -> &[u8] {
-        self.buf_pos.head(self.buffer)
+        record_head(self.buf_pos, self.buffer)
     }
 
     #[inline]
     fn seq(&self) -> &[u8] {
-        self.buf_pos.seq(self.buffer)
+        record_seq(self.buf_pos, self.buffer)
     }
 
     #[inline]
@@ -67,7 +67,11 @@ where
     where
         F: FnOnce() -> &'s mut Vec<u8>,
     {
-        self.buf_pos.join_seq_given(self.buffer, owned_fn)
+        join_lines_given(
+            self.buf_pos.seq_lines(self.buffer),
+            self.buf_pos.num_seq_lines(),
+            owned_fn,
+        )
     }
 
     #[inline]
@@ -114,7 +118,7 @@ where
 
 impl<'a, S> Record for RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: SeqRecordPosition,
 {
     #[inline]
     fn write_wrap<W: io::Write>(&self, mut writer: W, wrap: usize) -> io::Result<()> {
@@ -124,7 +128,7 @@ where
 
 impl<'a, S> RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: SeqRecordPosition,
 {
     #[inline]
     pub(crate) fn new(buffer: &'a [u8], buf_pos: &'a S) -> Self {
@@ -262,4 +266,4 @@ impl Record for OwnedRecord {
     }
 }
 
-impl_recordset!(RefRecord, LineStore, "fasta", "fasta");
+impl_recordset!(RefRecord, SeqRecordPosition, LineStore, "fasta", "fasta");

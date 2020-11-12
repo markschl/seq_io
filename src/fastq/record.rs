@@ -5,7 +5,10 @@ use std::slice;
 use std::str;
 
 use super::{write, write_iter, Error, ErrorKind, RangeStore};
-use crate::core::PositionStore;
+use crate::core::{
+    check_lengths, join_lines, join_lines_given, record_head, record_qual, record_seq,
+    QualRecordPosition,
+};
 use crate::{BaseRecord, ErrorPosition};
 use serde::{Deserialize, Serialize};
 
@@ -58,7 +61,7 @@ pub trait Record: BaseRecord {
 #[derive(Debug, Clone)]
 pub struct RefRecord<'a, S = RangeStore>
 where
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     pub(crate) buffer: &'a [u8],
     pub(crate) buf_pos: &'a S,
@@ -66,30 +69,33 @@ where
 
 impl<'a, S> BaseRecord for RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     #[inline]
     fn head(&self) -> &[u8] {
-        self.buf_pos.head(self.buffer)
+        record_head(self.buf_pos, self.buffer)
     }
 
     #[inline]
     fn seq(&self) -> &[u8] {
-        self.buf_pos.seq(self.buffer)
+        record_seq(self.buf_pos, self.buffer)
     }
 
     #[inline]
     fn full_seq(&self) -> Cow<[u8]> {
-        self.buf_pos.join_seq(self.buffer)
+        join_lines(self.seq_lines(), self.num_seq_lines())
     }
 
     #[inline]
     fn full_seq_given<'s, F>(&'s self, owned_fn: F) -> Cow<'s, [u8]>
     where
         F: FnOnce() -> &'s mut Vec<u8>,
-        Self: Sized,
     {
-        self.buf_pos.join_seq_given(self.buffer, owned_fn)
+        join_lines_given(
+            self.buf_pos.seq_lines(self.buffer),
+            self.buf_pos.num_seq_lines(),
+            owned_fn,
+        )
     }
 
     #[inline]
@@ -137,16 +143,16 @@ where
 
 impl<'a, S> Record for RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     #[inline]
     fn qual(&self) -> &[u8] {
-        self.buf_pos.qual(self.buffer)
+        record_qual(self.buf_pos, self.buffer)
     }
 
     #[inline]
     fn full_qual(&self) -> Cow<[u8]> {
-        self.buf_pos.join_qual(self.buffer)
+        join_lines(self.qual_lines(), self.num_qual_lines())
     }
 
     #[inline]
@@ -154,7 +160,11 @@ where
     where
         F: FnOnce() -> &'s mut Vec<u8>,
     {
-        self.buf_pos.join_qual_given(self.buffer, owned_fn)
+        join_lines_given(
+            self.buf_pos.qual_lines(self.buffer),
+            self.buf_pos.num_qual_lines(),
+            owned_fn,
+        )
     }
 
     #[inline]
@@ -165,7 +175,7 @@ where
 
 impl<'a, S> RefRecord<'a, S>
 where
-    S: PositionStore,
+    S: QualRecordPosition,
 {
     #[inline]
     pub(crate) fn new(buffer: &'a [u8], buf_pos: &'a S) -> Self {
@@ -188,8 +198,8 @@ where
 
     #[inline]
     fn _check_lengths(&self, strict: bool) -> Result<&Self, Error> {
-        self.buf_pos
-            .check_lengths(self.buffer, strict)
+        // TODO: remove multiilne_fastq, check by position
+        check_lengths(self.buf_pos, self.buffer, strict)
             .map(|_| self)
             .map_err(|(seq, qual)| {
                 let id = String::from_utf8_lossy(self.id_bytes()).into();
@@ -348,4 +358,4 @@ impl Record for OwnedRecord {
     }
 }
 
-impl_recordset!(RefRecord, RangeStore, "fastq", "fastq");
+impl_recordset!(RefRecord, QualRecordPosition, RangeStore, "fastq", "fastq");

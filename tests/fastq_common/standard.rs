@@ -1,12 +1,12 @@
 #[macro_export]
 macro_rules! impl_fastq_standard_tests {
-    ($Reader:ident, $PositionStore:ty, $RecordSet:ident, $ErrorKind:ident, $validate_ref:ident, $parallel_reader_func:path) => {
+    ($ReaderBuilder:ident, $PositionStore:path, $RecordSet:ident, $ErrorKind:ident, $validate_ref:ident, $parallel_reader_func:path) => {
 
 use seq_io::Position;
 //use seq_io::parallel::parallel_fastq;
 use crate::fastq_common::{FASTQ, FASTQ_EXPECTED};
 
-impl_common_fastq_tests!(FASTQ, FASTQ_EXPECTED, $Reader, $PositionStore, $RecordSet, $ErrorKind, $validate_ref,
+impl_common_fastq_tests!(FASTQ, FASTQ_EXPECTED, $ReaderBuilder, $PositionStore, $RecordSet, $ErrorKind, $validate_ref,
     next, read_record_set, seek, $parallel_reader_func);
 
 #[test]

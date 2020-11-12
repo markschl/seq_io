@@ -3,7 +3,7 @@
 //! definition of the format and may not be of general use. This parser was
 //! mostly created for exploring performance optimizations.
 
-use crate::core::{LinePositionIterKind, PositionStore, SearchPos};
+use crate::core::{LinePositionIterKind, SearchPos, SeqRecordPosition};
 use crate::LinePositionIter;
 use serde::{Deserialize, Serialize};
 use std::str;
@@ -18,35 +18,17 @@ pub struct RangeStore {
     pos: [usize; 3],
 }
 
-impl PositionStore for RangeStore {
-    type SeqLinesType = LinePositionIterKind;
-    type QualLinesType = LinePositionIterKind;
+impl SeqRecordPosition for RangeStore {
+    type SeqLinesKind = LinePositionIterKind;
 
     #[inline]
-    fn move_to_start(&mut self, search_pos: SearchPos, offset: usize) {
-        for i in 0..search_pos as usize + 1 {
-            self.pos[i] -= offset;
-        }
+    fn set_record_start(&mut self, pos: usize) {
+        self.pos[0] = pos;
     }
 
     #[inline]
     fn record_start(&self) -> usize {
         self.pos[0]
-    }
-
-    #[inline]
-    fn set_record_start(&mut self, start: usize) {
-        self.pos[0] = start;
-    }
-
-    #[inline]
-    fn sep_pos(&self) -> usize {
-        self.record_end()
-    }
-
-    #[inline]
-    fn qual_start(&self) -> usize {
-        self.record_end()
     }
 
     #[inline]
@@ -68,8 +50,13 @@ impl PositionStore for RangeStore {
     }
 
     #[inline]
-    fn set_record_end(&mut self, pos: usize, _: bool) {
-        self.pos[2] = pos;
+    fn seq_end(&self) -> usize {
+        self.record_end()
+    }
+
+    #[inline]
+    fn set_record_end(&mut self, end: usize, _: bool) {
+        self.pos[2] = end;
     }
 
     #[inline]
@@ -84,8 +71,8 @@ impl PositionStore for RangeStore {
     }
 
     #[inline]
-    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
-        search_pos as usize - !has_line as usize
+    fn num_seq_lines(&self) -> usize {
+        1
     }
 
     #[inline]
@@ -95,12 +82,16 @@ impl PositionStore for RangeStore {
     }
 
     #[inline]
-    fn qual_lines<'a>(&'a self, buffer: &'a [u8]) -> LinePositionIter<'a> {
-        LinePositionIter::new(buffer, &[])
+    fn apply_offset(&mut self, offset: isize, search_pos: Option<SearchPos>) {
+        // TODO: correct?
+        let range_end = search_pos.unwrap_or(SearchPos::SEP) as usize;
+        for i in 0..=range_end {
+            self.pos[i] = (self.pos[i] as isize + offset) as usize;
+        }
     }
 
     #[inline]
-    fn num_seq_lines(&self) -> usize {
-        1
+    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
+        search_pos as usize - !has_line as usize
     }
 }

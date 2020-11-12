@@ -1,6 +1,6 @@
 use std::str;
 
-use crate::core::{LinePositionIterKind, PositionStore, SearchPos};
+use crate::core::{LinePositionIterKind, QualRecordPosition, SearchPos, SeqRecordPosition};
 use crate::LinePositionIter;
 use serde::{Deserialize, Serialize};
 
@@ -13,25 +13,13 @@ pub struct LineStore {
     qual_pos: Vec<usize>,
 }
 
-impl PositionStore for LineStore {
-    type SeqLinesType = LinePositionIterKind;
-    type QualLinesType = LinePositionIterKind;
+impl SeqRecordPosition for LineStore {
+    type SeqLinesKind = LinePositionIterKind;
 
     #[inline]
     fn init(&mut self) {
         self.seq_pos.clear();
         self.qual_pos.clear();
-    }
-
-    #[inline]
-    fn move_to_start(&mut self, _: SearchPos, offset: usize) {
-        self.start -= offset;
-        for s in &mut self.seq_pos {
-            *s -= offset;
-        }
-        for s in &mut self.qual_pos {
-            *s -= offset;
-        }
     }
 
     #[inline]
@@ -63,6 +51,65 @@ impl PositionStore for LineStore {
     fn seq_starts(&self) -> &[usize] {
         self.seq_pos.split_last().unwrap().1
     }
+
+    #[inline]
+    fn seq_end(&self) -> usize {
+        self.sep_pos()
+    }
+
+    #[inline]
+    fn set_record_end(&mut self, end: usize, has_line: bool) {
+        self.end = end;
+        if has_line {
+            if self.has_qual() {
+                self.qual_pos.push(end);
+            } else {
+                self.seq_pos.push(end);
+            }
+        }
+    }
+
+    #[inline]
+    fn record_end(&self) -> usize {
+        self.end
+    }
+
+    #[inline]
+    fn num_lines(&self) -> usize {
+        self.seq_pos.len() + self.qual_pos.len()
+    }
+
+    #[inline]
+    fn num_seq_lines(&self) -> usize {
+        debug_assert!(self.seq_pos.len() > 0);
+        self.seq_pos.len() - 1
+    }
+
+    #[inline]
+    fn seq_lines<'s>(&'s self, buffer: &'s [u8]) -> LinePositionIter<'s> {
+        debug_assert!(self.seq_pos.len() > 0);
+        LinePositionIter::new(buffer, &self.seq_pos)
+    }
+
+    #[inline]
+    fn apply_offset(&mut self, offset: isize, _: Option<SearchPos>) {
+        self.start = (self.start as isize + offset) as usize;
+        for s in &mut self.seq_pos {
+            *s = (*s as isize + offset) as usize;
+        }
+        for s in &mut self.qual_pos {
+            *s = (*s as isize + offset) as usize;
+        }
+    }
+
+    #[inline]
+    fn line_offset(&self, _: SearchPos, has_line: bool) -> usize {
+        self.seq_pos.len() + self.qual_pos.len() - !has_line as usize
+    }
+}
+
+impl QualRecordPosition for LineStore {
+    type QualLinesKind = LinePositionIterKind;
 
     #[inline]
     fn set_sep_pos(&mut self, pos: usize, has_line: bool) {
@@ -104,47 +151,12 @@ impl PositionStore for LineStore {
     }
 
     #[inline]
-    fn set_record_end(&mut self, pos: usize, has_line: bool) {
-        self.end = pos;
-        if self.has_qual() && has_line {
-            self.qual_pos.push(pos);
-        }
-    }
-
-    #[inline]
-    fn record_end(&self) -> usize {
-        self.end
-    }
-
-    #[inline]
-    fn num_lines(&self) -> usize {
-        self.seq_pos.len() + self.qual_pos.len()
-    }
-
-    #[inline]
-    fn line_offset(&self, _: SearchPos, has_line: bool) -> usize {
-        self.seq_pos.len() + self.qual_pos.len() - !has_line as usize
-    }
-
-    #[inline]
-    fn num_seq_lines(&self) -> usize {
-        debug_assert!(self.seq_pos.len() > 0);
-        self.seq_pos.len() - 1
-    }
-
-    #[inline]
     fn num_qual_lines(&self) -> usize {
         self.qual_pos.len().checked_sub(1).unwrap_or(0)
     }
 
     #[inline]
-    fn seq_lines<'a>(&'a self, buffer: &'a [u8]) -> LinePositionIter<'a> {
-        debug_assert!(self.seq_pos.len() > 0);
-        LinePositionIter::new(buffer, &self.seq_pos)
-    }
-
-    #[inline]
-    fn qual_lines<'a>(&'a self, buffer: &'a [u8]) -> LinePositionIter<'a> {
+    fn qual_lines<'s>(&'s self, buffer: &'s [u8]) -> LinePositionIter<'s> {
         debug_assert!(self.qual_pos.len() > 0);
         LinePositionIter::new(buffer, &self.qual_pos)
     }

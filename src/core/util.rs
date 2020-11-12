@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::mem::replace;
 
 macro_rules! try_opt {
@@ -30,50 +29,6 @@ pub(crate) fn trim_cr(line: &[u8]) -> &[u8] {
         remaining
     } else {
         line
-    }
-}
-
-/// Joins lines together
-#[inline]
-pub(crate) fn join_lines<'a, L>(mut lines: L, num_lines: usize) -> Cow<'a, [u8]>
-where
-    L: Iterator<Item = &'a [u8]>,
-{
-    match num_lines {
-        1 => lines.next().unwrap().into(),
-        0 => b""[..].into(),
-        _ => {
-            let mut out = vec![];
-            for line in lines {
-                out.extend(line);
-            }
-            // println!("joined {} lines: {:?}", num_lines, out);
-            return out.into();
-        }
-    }
-}
-
-/// Joins lines together
-#[inline]
-pub(crate) fn join_lines_given<'a, L, F>(
-    mut lines: L,
-    num_lines: usize,
-    owned_fn: F,
-) -> Cow<'a, [u8]>
-where
-    L: Iterator<Item = &'a [u8]>,
-    F: FnOnce() -> &'a mut Vec<u8>,
-{
-    match num_lines {
-        1 => lines.next().unwrap().into(),
-        0 => b""[..].into(),
-        _ => {
-            let output = owned_fn();
-            for line in lines {
-                output.extend(line);
-            }
-            return (&*output).into();
-        }
     }
 }
 
@@ -224,21 +179,5 @@ mod tests {
         let lines: Vec<_> = SimpleLines::new(text).rev().collect();
         let exp_rev: Vec<&[u8]> = expected.into_iter().rev().collect();
         assert_eq!(lines, exp_rev);
-    }
-
-    #[test]
-    fn join_lines() {
-        let mut out = vec![];
-        let data = vec![
-            (vec![&b"a"[..], &b"bcde"[..]], &b"abcde"[..]),
-            (vec![&b""[..], &b"a"[..]], &b"a"[..]),
-            (vec![&b""[..]], &b""[..]),
-        ];
-        for (lines, expected) in data {
-            let n = lines.len();
-            let joined = join_lines_given(lines.into_iter(), n, || &mut out);
-            assert_eq!(&joined, &expected);
-            out.clear();
-        }
     }
 }

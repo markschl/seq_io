@@ -4,7 +4,7 @@ macro_rules! impl_fastx_reader {
 impl_reader!(
     Reader, crate::fastx::RefRecord<S>, crate::fastx::OwnedRecord,
     crate::fastx::RecordSet<S>, crate::fastx::Error,
-    $DefaultPositionStore, true, $multiline_fastq,
+    crate::core::QualRecordPosition, $DefaultPositionStore, true, $multiline_fastq,
     "fastx", ($($mod_path),*), "\n@id\nACGT\n+\nIIII\n", "\n@id1\nACGT\n+\nIIII\n@id2\nTGCA\n+\nIIII\n",
     ["OwnedRecord {head: b\"id1\".to_vec(), seq: b\"ACGT\".to_vec(), qual: Some(b\"IIII\".to_vec())}",
      "OwnedRecord {head: b\"id2\".to_vec(), seq: b\"TGCA\".to_vec(), qual: Some(b\"IIII\".to_vec())}"]
@@ -15,40 +15,35 @@ pub struct Reader<R, P = crate::policy::StdPolicy, S = $DefaultPositionStore>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: crate::core::QualRecordPosition,
 {
-    inner: crate::core::CoreReader<R, P, S>,
+    inner: crate::core::CoreReader<R, P, crate::core::QualRecordPositionWrapper<S>, S>,
     fasta: Option<Option<bool>>,
 }
 
-
-impl<R> Reader<R>
-where
-    R: std::io::Read,
-{
-    #[inline]
-    fn _with_capacity(reader: R, capacity: usize) -> Self {
-        Reader {
-            inner: crate::core::CoreReader::with_capacity(reader, capacity),
-            fasta: None,
-        }
-    }
-
-    #[inline]
-    fn _from_buf_reader(rdr: crate::core::BufReader<R>, byte_offset: usize, line_idx: u64) -> Self {
-        Reader {
-            inner: crate::core::CoreReader::from_buf_reader(rdr, byte_offset, line_idx),
-            fasta: None,
-        }
-    }
-}
 
 impl<R, P, S> Reader<R, P, S>
 where
     R: std::io::Read,
     P: crate::policy::BufPolicy,
-    S: crate::core::PositionStore,
+    S: crate::core::QualRecordPosition,
 {
+    #[inline]
+    fn _new(reader: R, capacity: usize, policy: P) -> Self {
+        Reader {
+            inner: crate::core::CoreReader::new(reader, capacity, policy),
+            fasta: None,
+        }
+    }
+
+    #[inline]
+    fn _from_buf_reader(rdr: crate::core::BufReader<R, P>, byte_offset: usize, line_idx: u64) -> Self {
+        Reader {
+            inner: crate::core::CoreReader::from_buf_reader(rdr, byte_offset, line_idx),
+            fasta: None,
+        }
+    }
+
     #[inline]
     fn _check_is_fasta(&mut self) -> super::Result<Option<bool>> {
         if let Some(fasta) = self.fasta {
@@ -82,22 +77,6 @@ where
             } else {
                 crate::fastx::SeqFormat::FASTQ
             })
-    }
-
-    #[inline]
-    fn _set_store<T: crate::core::PositionStore>(self) -> Reader<R, P, T> {
-        Reader {
-            inner: self.inner.set_store(),
-            fasta: self.fasta,
-        }
-    }
-
-    #[inline]
-    fn _set_policy<T: crate::policy::BufPolicy>(self, buf_policy: T) -> Reader<R, T, S> {
-        Reader {
-            inner: self.inner.set_policy(buf_policy),
-            fasta: self.fasta,
-        }
     }
 }
 

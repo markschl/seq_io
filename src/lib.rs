@@ -76,18 +76,12 @@
 //! scores.
 //!
 //! Therefore, all readers have a third generic parameter, which allows
-//! assigning a specific "storage backend" implementing the
-//! [`core::PositionStore`](crate::core::PositionStore) trait. Usually, it is
+//! assigning a specific "storage backend" implementing the traits
+//! [`SeqRecordPosition`](crate::SeqRecordPosition) and
+//! [`QualRecordPosition`](crate::QualRecordPosition). Usually, it is
 //! not necessary to deal with this parameter since each parser has a reasonable
 //! default. The only case where it is changed in this crate is with the trait
 //! object approach implemented in [`fastx::dynamic`](crate::fastx::dynamic).
-//!
-//! Note that not all combinations of readers and `PositionStore` types have
-//! currently been tested, and some combinations are known to be problematic.
-//! Others just don't make sense. For example, the API does not prohibit
-//! combining `fastq::Reader` with  `fasta::LineStore`, but this will return
-//! everything after the header as sequence, and no quality scores are stored.
-//! TODO: document possible combinations
 
 pub use self::error::*;
 pub use self::helpers::*;
@@ -107,3 +101,4 @@ pub mod fastq;
 pub mod parallel;
 pub mod policy;
 pub mod prelude;
+// pub mod paired;

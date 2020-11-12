@@ -43,13 +43,14 @@
 //! sequence and quality lengths are the same. If they were different, it may
 //! confuse the parser and lead to weird errors.
 
-use crate::core::{LinesParseKind, PositionStore, SearchPos};
+use crate::core::{LineSearchKind, QualRecordPosition, SearchPos, SeqRecordPosition};
 use crate::LineSearchIter;
 use serde::{Deserialize, Serialize};
 use std::str;
 
 impl_fastq_reader!(true, MultiRangeStore, ("fastq::multiline", "fastq"));
 
+// TODO: still optimized for single-line, otherwise -> FASTX?
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MultiRangeStore {
     pos: [usize; 5],
@@ -57,9 +58,8 @@ pub struct MultiRangeStore {
     n_qual_lines: usize,
 }
 
-impl PositionStore for MultiRangeStore {
-    type SeqLinesType = LinesParseKind;
-    type QualLinesType = LinesParseKind;
+impl SeqRecordPosition for MultiRangeStore {
+    type SeqLinesKind = LineSearchKind;
 
     #[inline]
     fn init(&mut self) {
@@ -68,20 +68,13 @@ impl PositionStore for MultiRangeStore {
     }
 
     #[inline]
-    fn move_to_start(&mut self, search_pos: SearchPos, offset: usize) {
-        for i in 0..search_pos as usize + 1 {
-            self.pos[i] -= offset;
-        }
+    fn set_record_start(&mut self, pos: usize) {
+        self.pos[0] = pos;
     }
 
     #[inline]
     fn record_start(&self) -> usize {
         self.pos[0]
-    }
-
-    #[inline]
-    fn set_record_start(&mut self, start: usize) {
-        self.pos[0] = start;
     }
 
     #[inline]
@@ -106,6 +99,63 @@ impl PositionStore for MultiRangeStore {
     }
 
     #[inline]
+    fn seq_end(&self) -> usize {
+        self.sep_pos()
+    }
+
+    #[inline]
+    fn set_record_end(&mut self, end: usize, has_line: bool) {
+        self.pos[4] = end;
+        if !has_line && self.has_qual() {
+            // one quality line too much may have been added
+            self.n_qual_lines -= 1;
+        }
+    }
+
+    #[inline]
+    fn record_end(&self) -> usize {
+        self.pos[4]
+    }
+
+    // TODO: does not work with normal FASTA (line numbers not correctly incremented)
+    #[inline]
+    fn num_lines(&self) -> usize {
+        1 + self.n_seq_lines + 1 + self.n_qual_lines
+    }
+
+    #[inline]
+    fn num_seq_lines(&self) -> usize {
+        self.n_seq_lines
+    }
+
+    #[inline]
+    fn seq_lines<'s>(&'s self, buffer: &'s [u8]) -> LineSearchIter<'s> {
+        LineSearchIter::new(
+            &buffer[self.seq_start()..self.seq_end()],
+            self.n_seq_lines == 1,
+        )
+    }
+
+    #[inline]
+    fn apply_offset(&mut self, offset: isize, search_pos: Option<SearchPos>) {
+        // TODO: correct?
+        let range_end = search_pos.unwrap_or(SearchPos::QUAL) as usize;
+        for i in 0..=range_end {
+            self.pos[i] = (self.pos[i] as isize + offset) as usize;
+        }
+    }
+
+    #[inline]
+    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
+        self.n_seq_lines + self.n_qual_lines + (search_pos >= SearchPos::SEP) as usize
+            - !has_line as usize
+    }
+}
+
+impl QualRecordPosition for MultiRangeStore {
+    type QualLinesKind = LineSearchKind;
+
+    #[inline]
     fn set_sep_pos(&mut self, pos: usize, has_line: bool) {
         self.pos[2] = pos;
         if !has_line {
@@ -121,6 +171,9 @@ impl PositionStore for MultiRangeStore {
     #[inline]
     fn set_qual_start(&mut self, pos: usize) {
         self.pos[3] = pos;
+        if pos == 27 {
+            panic!();
+        }
         self.n_qual_lines += 1;
     }
 
@@ -145,48 +198,11 @@ impl PositionStore for MultiRangeStore {
     }
 
     #[inline]
-    fn record_end(&self) -> usize {
-        self.pos[4]
-    }
-
-    #[inline]
-    fn set_record_end(&mut self, pos: usize, has_line: bool) {
-        self.pos[4] = pos;
-        if !has_line && self.has_qual() {
-            // one quality line too much may have been added
-            self.n_qual_lines -= 1;
-        }
-    }
-
-    #[inline]
-    fn num_lines(&self) -> usize {
-        1 + self.n_seq_lines + 1 + self.n_qual_lines
-    }
-
-    #[inline]
-    fn line_offset(&self, search_pos: SearchPos, has_line: bool) -> usize {
-        self.n_seq_lines + self.n_qual_lines + (search_pos >= SearchPos::SEP) as usize
-            - !has_line as usize
-    }
-
-    #[inline]
-    fn num_seq_lines(&self) -> usize {
-        self.n_seq_lines
-    }
-
-    #[inline]
     fn num_qual_lines(&self) -> usize {
         self.n_qual_lines
     }
 
     #[inline]
-    fn seq_lines<'s>(&'s self, buffer: &'s [u8]) -> LineSearchIter<'s> {
-        LineSearchIter::new(
-            &buffer[self.seq_start()..self.sep_pos()],
-            self.n_seq_lines == 1,
-        )
-    }
-
     fn qual_lines<'s>(&'s self, buffer: &'s [u8]) -> LineSearchIter<'s> {
         // we need the newline at the end in order to correctly parse the lines
         // -> but records at EOF may not have a newline
@@ -194,6 +210,7 @@ impl PositionStore for MultiRangeStore {
             debug_assert!(self.record_end() == buffer.len() + 1);
             buffer.len()
         } else {
+            // println!("record_end {}", self.record_end());
             self.record_end()
         };
         LineSearchIter::new(&buffer[self.qual_start()..end], self.n_qual_lines == 1)

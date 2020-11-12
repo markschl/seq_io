@@ -94,7 +94,7 @@ macro_rules! fasta_single {
     ($c:expr, $name:expr, $data:ident, $Store:ty, $rec:ident, $code:block) => {
         bench!($c, $name, $data, {
             let mut reader: fasta::single_line::Reader<_, _, $Store> =
-                fasta::single_line::Reader::new($data).set_store();
+                fasta::single_line::Reader::with_pos_store($data);
             while let Some(r) = reader.next() {
                 let $rec = r.unwrap();
                 $code

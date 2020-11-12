@@ -74,7 +74,7 @@
 //!
 //! # Sequence record types
 //!
-//! Similarly to [`fasta`](crate::fasta))`::Reader`, there are two record types,
+//! Similarly to [`fasta`](crate::fasta)`::Reader`, there are two record types,
 //! which both implement the common [`BaseRecord`](crate::BaseRecord)
 //! trait, [and `fastq::Record`](Record) providing additional FASTQ
 //! specific methods:
@@ -126,7 +126,7 @@
 //! * Do the the header, sequence and separator lines have a line terminator?
 //!   If not: [`UnexpectedEnd`](ErrorKind::UnexpectedEnd).
 //! * Is the separator byte correct (`+`)? If not: [`InvalidSep`](ErrorKind::InvalidSep).
-//! * Are the quality scores have a line terminator *or* are they
+//! * Do the quality scores have a line terminator *or* are they
 //!   non-empty? If not: [`UnexpectedEnd`](ErrorKind::UnexpectedEnd).
 #[macro_use]
 mod error;
