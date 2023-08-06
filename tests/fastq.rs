@@ -277,11 +277,10 @@ fn test_fastq_seek_err() {
             reader.next().unwrap(),
             Err(Error::InvalidSep {
                 found: b'~',
-                pos:
-                    ErrorPosition {
-                        line: 7,
-                        id: Some(_),
-                    },
+                pos: ErrorPosition {
+                    line: 7,
+                    id: Some(_),
+                },
             })
         );
 
@@ -296,11 +295,10 @@ fn test_fastq_seek_err() {
             reader.next().unwrap(),
             Err(Error::InvalidSep {
                 found: b'~',
-                pos:
-                    ErrorPosition {
-                        line: 7,
-                        id: Some(_),
-                    },
+                pos: ErrorPosition {
+                    line: 7,
+                    id: Some(_),
+                },
             })
         );
     }

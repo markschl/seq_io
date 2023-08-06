@@ -2,15 +2,15 @@
 
 extern crate bio;
 extern crate rand;
-extern crate rand_isaac;
 extern crate rand_distr;
+extern crate rand_isaac;
 extern crate seq_io;
 #[macro_use]
 extern crate criterion;
 
 use criterion::Criterion;
-use rand_distr::Normal;
 use rand::{Rng, SeedableRng};
+use rand_distr::Normal;
 use rand_isaac::isaac64::Isaac64Rng;
 use std::iter::repeat;
 
