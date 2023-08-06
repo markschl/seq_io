@@ -15,7 +15,7 @@ This library provides an(other) attempt at parsing of the sequence formats FASTA
 * Support for seeking
 * Serde support (for owned data structures)
 * Functions for parallel processing
-* Thoroughly tested using fuzzing techniques [see here](FUZZING.md)
+* Tested using fuzzing techniques [see here](fuzz/README.md)
 
 The FASTA parser can read and write multi-line files and allows
 iterating over the sequence lines without doing any allocation or
