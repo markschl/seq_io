@@ -3,9 +3,12 @@ on:
   pull_request:
   push:
     branches:
-    - master
-  schedule:
-    - cron: '00 01 * * *'
+    - v0.3
+
+# Make sure CI fails on all warnings, including Clippy lints
+env:
+  RUSTFLAGS: "-Dwarnings"
+    
 jobs:
   test:
     name: test
@@ -45,10 +48,11 @@ jobs:
     - run: cargo build --verbose
     - run: cargo doc --verbose
     - run: cargo test --verbose
+    - run: cargo clippy --all-targets --all-features
     - if: matrix.build == 'nightly'
       run: cargo bench --verbose --no-run
 
-  check-doc-sync:
+  rustfmt:
     name: rustfmt
     runs-on: ubuntu-22.04
     steps:
