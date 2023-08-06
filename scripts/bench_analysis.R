@@ -3,12 +3,14 @@ library(cowplot)
 
 criterion_dir <- commandArgs(TRUE)[1]
 
+sessionInfo()
+
 #### read data ####
 
-d <- data.frame()
-for (name in list.dirs(criterion_dir, F, F)) {
-  d <- rbind(d, read.csv(file.path(criterion_dir, name, 'new', 'raw.csv')))
-}
+d <- lapply(list.dirs(criterion_dir, F, F), function(dir) {
+  read.csv(file.path(criterion_dir, dir, 'new', 'raw.csv'))
+})
+d <- do.call(rbind, d)
 
 s <- strsplit(as.character(d$group), ' ')
 cfg <- as.data.frame(t(as.data.frame(lapply(s, '[', 1:5))))
@@ -19,7 +21,7 @@ cfg$cap_test <- grepl('_cap', as.character(cfg$reader))
 
 d <- cbind(d, cfg)
 
-d$gb_per_s <- (as.numeric(d$data_len) / 1e9) / (d$sample_time_nanos / 1e9) * d$iteration_count
+d$gb_per_s <- (as.numeric(d$data_len) / 1e9) / (d$sample_measured_value / 1e9) * d$iteration_count
 
 d <- subset(d, !is.na(data_len))
 
@@ -34,14 +36,16 @@ dir.create(outdir, F)
 
 reader_plot <- function(data, facets) {
   ggplot(data, aes(reader, gb_per_s, fill=reader)) +
-    stat_summary(fun.y=mean, geom='bar', width=1, colour='#222222', size=0.2) +
+    stat_summary(fun=mean, geom='bar', width=1, colour='#222222', linewidth=0.2) +
     stat_summary(fun.data=mean_se, geom = 'errorbar', width=0.2, alpha=0.5) +
-    facet_grid(paste(paste(facets, collapse= "+"), " ~ ."),
-               space='free_y', scale='free_y', switch='y') +
+    facet_grid(as.formula(paste(paste(facets, collapse= "+"), " ~ .")),
+               space='free_y', scale='free_y') +
     scale_fill_grey(start=0.05, end=0.95) +
+    coord_flip(expand=F, ylim=c(0, max(data$gb_per_s, na.rm=T))) +
     labs(x='reader', y='GB/s') +
-    theme_bw() + theme(
-      strip.text.y = element_text(angle=180),
+    theme_bw() +
+    theme(
+      strip.text.y = element_text(angle=0),
       strip.background = element_rect(fill='white', colour='gray50'),
       axis.text.y = element_blank(),
       axis.ticks.y = element_blank(),
@@ -49,8 +53,7 @@ reader_plot <- function(data, facets) {
       panel.grid.major.y = element_blank(),
       panel.grid.minor.y = element_blank(),
       panel.spacing = unit(-.5, 'pt')
-    ) +
-    coord_flip(expand=F, ylim=c(0, max(data$gb_per_s, na.rm=T)))
+    )
 }
 
 reader_cmp <- subset(d, !cap_test)
@@ -101,8 +104,8 @@ cap_cmp <- subset(d, cap_test)
 png(file.path(outdir, 'bench_cap.png'), width=1400, height=1000, res=200)
 cap_cmp$bufsize <- as.numeric(gsub('([0-9]+)ki', '\\1', cap_cmp$config))
 ggplot(cap_cmp, aes(bufsize, gb_per_s, color=as.factor(seqlen), linetype=format)) +
-    stat_summary(fun.y=mean, geom='point') +
-    stat_summary(fun.y=mean, geom='line') +
+    stat_summary(fun=mean, geom='point') +
+    stat_summary(fun=mean, geom='line') +
     stat_summary(fun.data=mean_se, geom = 'errorbar', width=0.1, alpha=0.5) +
     expand_limits(y=0) +
     scale_x_continuous(trans='log1p', breaks=2^(0:25)) +
