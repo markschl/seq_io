@@ -11,7 +11,6 @@
 //! or implement our own solution, as shown:
 //!
 //! ```no_run
-//! # extern crate seq_io;
 //! # fn main() {
 //! use seq_io::policy::BufPolicy;
 //! use seq_io::fasta::{Reader,Record};

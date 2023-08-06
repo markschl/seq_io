@@ -71,9 +71,6 @@
 
 use std::io;
 
-extern crate crossbeam_utils;
-extern crate scoped_threadpool;
-
 use std::marker::PhantomData;
 use std::sync::mpsc;
 

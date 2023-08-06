@@ -108,12 +108,8 @@
 //! # Parallel processing
 //! Functions for parallel processing can be found in the [`parallel`](parallel/index.html) module
 
-extern crate buffer_redux;
-extern crate memchr;
-
 #[macro_use]
 extern crate serde_derive;
-extern crate serde;
 
 use std::error;
 use std::fmt;
