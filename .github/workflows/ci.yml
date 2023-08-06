@@ -50,9 +50,21 @@ jobs:
     - run: cargo test --verbose
     - if: matrix.build == 'nightly'
       run: cargo bench --verbose --no-run
-    - if: matrix.build != 'nightly'
-      run: cargo clippy --all-targets --all-features
 
+  clippy:
+    name: clippy
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Clippy check
+        run: cargo clippy --all-targets
+    
   rustfmt:
     name: rustfmt
     runs-on: ubuntu-22.04
