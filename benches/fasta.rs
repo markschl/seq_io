@@ -3,12 +3,13 @@
 extern crate bio;
 extern crate rand;
 extern crate rand_isaac;
+extern crate rand_distr;
 extern crate seq_io;
 #[macro_use]
 extern crate criterion;
 
 use criterion::Criterion;
-use rand::distributions::Normal;
+use rand_distr::Normal;
 use rand::{Rng, SeedableRng};
 use rand_isaac::isaac64::Isaac64Rng;
 use std::iter::repeat;
@@ -36,8 +37,8 @@ fn gen_fasta(
     rec.extend(repeat(b'd').take(desc_len));
     rec.extend(&newline);
 
-    let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC);
-    let mut rng = Isaac64Rng::from_seed([5; 32]);
+    let norm = Normal::new(seq_len as f64, seq_len as f64 * SEQLEN_SD_FRAC).unwrap();
+    let rng = Isaac64Rng::from_seed([5; 32]);
 
     rng.sample_iter(&norm)
         .map(|slen| {

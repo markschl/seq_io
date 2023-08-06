@@ -6,8 +6,8 @@ authors = ["Automatically generated"]
 publish = false
 
 [dependencies]
-criterion = { version = "0.2", default_features = false }
-bio = "0.25"
+criterion = { version = "0.5", default_features = false }
+bio = "^0.14"
 matches = "0.1"
 
 [package.metadata]

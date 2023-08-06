@@ -71,7 +71,7 @@
 
 use std::io;
 
-extern crate crossbeam;
+extern crate crossbeam_utils;
 extern crate scoped_threadpool;
 
 use std::marker::PhantomData;
@@ -131,7 +131,7 @@ where
     let (done_send, done_recv) = mpsc::sync_channel(queue_len);
     let (empty_send, empty_recv): (mpsc::SyncSender<R::DataSet>, _) = mpsc::sync_channel(queue_len);
 
-    crossbeam::scope(|scope| {
+    crossbeam_utils::thread::scope(|scope| {
         let handle = scope.spawn::<_, Result<(), Er>>(move |_| {
             let mut reader = reader_init()?;
 

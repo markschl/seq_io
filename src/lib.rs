@@ -108,7 +108,7 @@
 //! # Parallel processing
 //! Functions for parallel processing can be found in the [`parallel`](parallel/index.html) module
 
-extern crate buf_redux;
+extern crate buffer_redux;
 extern crate memchr;
 
 #[macro_use]
@@ -155,7 +155,7 @@ fn trim_cr(line: &[u8]) -> &[u8] {
 /// Makes sure the buffer is full after this call (unless EOF reached)
 /// code adapted from `io::Read::read_exact`
 fn fill_buf<R>(
-    reader: &mut buf_redux::BufReader<R, buf_redux::policy::StdPolicy>,
+    reader: &mut buffer_redux::BufReader<R, buffer_redux::policy::StdPolicy>,
 ) -> io::Result<usize>
 where
     R: io::Read,

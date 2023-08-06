@@ -54,7 +54,7 @@ use std::path::Path;
 use std::slice;
 use std::str::{self, Utf8Error};
 
-use buf_redux;
+use buffer_redux;
 use memchr::Memchr;
 
 use super::policy::{BufPolicy, StdPolicy};
@@ -66,7 +66,7 @@ const BUFSIZE: usize = 64 * 1024;
 
 /// Parser for FASTA files.
 pub struct Reader<R: io::Read, P = DefaultPolicy> {
-    buf_reader: buf_redux::BufReader<R>,
+    buf_reader: buffer_redux::BufReader<R>,
     buf_pos: BufferPosition,
     position: Position,
     search_pos: usize,
@@ -101,7 +101,7 @@ where
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, DefaultPolicy> {
         assert!(capacity >= 3);
         Reader {
-            buf_reader: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_reader: buffer_redux::BufReader::with_capacity(capacity, reader),
             buf_pos: BufferPosition {
                 start: 0,
                 seq_pos: Vec::with_capacity(1),

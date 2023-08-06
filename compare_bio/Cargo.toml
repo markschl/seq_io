@@ -3,7 +3,6 @@ name = "compare_bio"
 version = "0.1.0"
 authors = ["markschl"]
 
-
 [dependencies]
-bio = "^0.14"
+bio = { version = "^0.14", default_features = false }
 seq_io = { path = ".." }

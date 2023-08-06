@@ -10,7 +10,7 @@ use std::path::Path;
 use std::slice;
 use std::str::{self, Utf8Error};
 
-use buf_redux;
+use buffer_redux;
 
 use super::policy::{BufPolicy, StdPolicy};
 use super::*;
@@ -31,7 +31,7 @@ enum SearchPos {
 
 /// FASTQ parser.
 pub struct Reader<R: io::Read, P = DefaultBufPolicy> {
-    buf_reader: buf_redux::BufReader<R>,
+    buf_reader: buffer_redux::BufReader<R>,
     buf_pos: BufferPosition,
     search_pos: SearchPos,
     position: Position,
@@ -64,7 +64,7 @@ where
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
         Reader {
-            buf_reader: buf_redux::BufReader::with_capacity(capacity, reader),
+            buf_reader: buffer_redux::BufReader::with_capacity(capacity, reader),
             buf_pos: BufferPosition::default(),
             search_pos: SearchPos::HEAD,
             position: Position::new(1, 0),
