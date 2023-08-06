@@ -4,5 +4,5 @@ version = "0.1.0"
 authors = ["markschl"]
 
 [dependencies]
-bio = { version = "^0.14", default_features = false }
+bio = { version = "1.3", default_features = false }
 seq_io = { path = ".." }
