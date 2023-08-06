@@ -216,6 +216,7 @@ where
     E: Send,
     O: Send,
 {
+    #[inline]
     pub fn next(&mut self) -> Option<Result<(&mut R, O), E>> {
         self.done_recv.recv().unwrap().map(move |result| {
             match result {
@@ -381,6 +382,7 @@ parallel_record_impl!(
 pub struct ReusableReader<P, O>(P, PhantomData<O>);
 
 impl<P, O> ReusableReader<P, O> {
+    #[inline]
     pub fn new(p: P) -> ReusableReader<P, O> {
         ReusableReader(p, PhantomData)
     }
@@ -393,6 +395,8 @@ where
 {
     type DataSet = (P::DataSet, O);
     type Err = P::Err;
+
+    #[inline]
     fn fill_data(&mut self, data: &mut Self::DataSet) -> Option<Result<(), P::Err>> {
         self.0.fill_data(&mut data.0)
     }
@@ -461,6 +465,8 @@ where
 {
     type DataSet = fasta::RecordSet;
     type Err = fasta::Error;
+
+    #[inline]
     fn fill_data(&mut self, rset: &mut fasta::RecordSet) -> Option<Result<(), fasta::Error>> {
         self.read_record_set(rset)
     }
@@ -475,6 +481,8 @@ where
 {
     type DataSet = fastq::RecordSet;
     type Err = fastq::Error;
+
+    #[inline]
     fn fill_data(&mut self, rset: &mut fastq::RecordSet) -> Option<Result<(), fastq::Error>> {
         self.read_record_set(rset)
     }

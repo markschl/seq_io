@@ -154,6 +154,7 @@ fn trim_cr(line: &[u8]) -> &[u8] {
 
 /// Makes sure the buffer is full after this call (unless EOF reached)
 /// code adapted from `io::Read::read_exact`
+#[inline(never)]
 fn fill_buf<R>(
     reader: &mut buffer_redux::BufReader<R, buffer_redux::policy::StdPolicy>,
 ) -> io::Result<usize>

@@ -55,12 +55,14 @@ where
     /// let record = reader.next().unwrap().unwrap();
     /// assert_eq!(record.id(), Ok("id"))
     /// ```
+    #[inline]
     pub fn new(reader: R) -> Reader<R, StdPolicy> {
         Reader::with_capacity(reader, BUFSIZE)
     }
 
     /// Creates a new reader with a given buffer capacity. The minimum allowed
     /// capacity is 3.
+    #[inline]
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
         Reader {
@@ -86,6 +88,7 @@ impl Reader<File, DefaultBufPolicy> {
     ///
     /// // (... do something with the reader)
     /// ```
+    #[inline]
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
     }
@@ -130,6 +133,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
+    #[inline]
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         if self.finished || !self.initialized() && !try_opt!(self.init()) {
             return None;
@@ -159,7 +163,6 @@ where
         Ok(true)
     }
 
-    #[inline]
     fn initialized(&self) -> bool {
         !self.get_buf().is_empty()
     }
@@ -167,6 +170,7 @@ where
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
     /// buffer are just copied over to the record set and the positions of all records are found.
     /// Old data will be erased. Returns `None` if the input reached its end.
+    #[inline]
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
         if self.finished {
             return None;
@@ -198,13 +202,11 @@ where
         }
     }
 
-    #[inline]
     fn get_buf(&self) -> &[u8] {
         self.buf_reader.buffer()
     }
 
     // Sets starting points for next position
-    #[inline]
     fn next_pos(&mut self) {
         self.position.byte += (self.buf_pos.pos.1 + 1 - self.buf_pos.pos.0) as u64;
         self.position.line += 4;
@@ -215,7 +217,6 @@ where
     // Returns false if incomplete because end of buffer reached,
     // meaning that the last record may be incomplete.
     // Updates self.search_pos.
-    #[inline]
     fn find(&mut self) -> Result<bool, Error> {
         self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
             self.search_pos = SearchPos::HEAD;
@@ -334,7 +335,6 @@ where
         }
     }
 
-    #[inline]
     fn find_line(&self, search_start: usize) -> Option<usize> {
         memchr(b'\n', &self.get_buf()[search_start..]).map(|pos| search_start + pos + 1)
     }
@@ -367,6 +367,7 @@ where
         }
     }
 
+    #[inline(never)]
     fn check_end(&mut self) -> Result<bool, Error> {
         self.finished = true;
         if self.search_pos == SearchPos::QUAL {
@@ -482,12 +483,14 @@ where
     /// );
     /// # }
     /// ```
+    #[inline]
     pub fn records(&mut self) -> RecordsIter<R, P> {
         RecordsIter { rdr: self }
     }
 
     /// Returns an iterator over all FASTQ records like `Reader::records()`,
     /// but with the difference that it owns the underlying reader.
+    #[inline]
     pub fn into_records(self) -> RecordsIntoIter<R, P> {
         RecordsIntoIter { rdr: self }
     }
@@ -537,6 +540,7 @@ where
     /// assert_eq!(reader.next().unwrap().unwrap().to_owned_record(), record1);
     /// # }
     /// ```
+    #[inline]
     pub fn seek(&mut self, pos: &Position) -> Result<(), Error> {
         self.finished = false;
         let diff = pos.byte as i64 - self.position.byte as i64;
@@ -570,6 +574,8 @@ where
     R: io::Read + 'a,
 {
     type Item = Result<OwnedRecord, Error>;
+
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
@@ -586,6 +592,8 @@ where
     R: io::Read,
 {
     type Item = Result<OwnedRecord, Error>;
+
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
@@ -599,16 +607,19 @@ pub struct Position {
 }
 
 impl Position {
+    #[inline]
     pub fn new(line: u64, byte: u64) -> Position {
         Position { line, byte }
     }
 
     /// Line number (starting with 1)
+    #[inline]
     pub fn line(&self) -> u64 {
         self.line
     }
 
     /// Byte offset within the file
+    #[inline]
     pub fn byte(&self) -> u64 {
         self.byte
     }
@@ -661,6 +672,7 @@ pub struct ErrorPosition {
 }
 
 impl fmt::Display for ErrorPosition {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(id) = self.id.as_ref() {
             write!(f, "record '{}' at ", id)?;
@@ -670,6 +682,7 @@ impl fmt::Display for ErrorPosition {
 }
 
 impl fmt::Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => e.fmt(f),
@@ -699,12 +712,14 @@ impl fmt::Display for Error {
 }
 
 impl From<io::Error> for Error {
+    #[inline]
     fn from(e: io::Error) -> Error {
         Error::Io(e)
     }
 }
 
 impl StdError for Error {
+    #[inline]
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
             Error::Io(ref err) => Some(err),
@@ -760,26 +775,31 @@ pub trait Record {
     /// Return the FASTQ qualities as byte slice
     fn qual(&self) -> &[u8];
 
+    #[inline]
     fn id_bytes(&self) -> &[u8] {
         self.head().split(|b| *b == b' ').next().unwrap()
     }
 
     /// Return the ID of the record (everything before an optional space) as string slice
+    #[inline]
     fn id(&self) -> Result<&str, Utf8Error> {
         str::from_utf8(self.id_bytes())
     }
 
+    #[inline]
     fn desc_bytes(&self) -> Option<&[u8]> {
         self.head().splitn(2, |b| *b == b' ').nth(1)
     }
 
     /// Return the description of the record as string slice, if present. Otherwise, `None` is returned.
+    #[inline]
     fn desc(&self) -> Option<Result<&str, Utf8Error>> {
         self.desc_bytes().map(str::from_utf8)
     }
 
     /// Return both the ID and the description of the record (if present)
     /// This should be faster than calling `id()` and `desc()` separately.
+    #[inline]
     fn id_desc_bytes(&self) -> (&[u8], Option<&[u8]>) {
         let mut h = self.head().splitn(2, |c| *c == b' ');
         (h.next().unwrap(), h.next())
@@ -787,6 +807,7 @@ pub trait Record {
 
     /// Return both the ID and the description of the record (if present)
     /// This should be faster than calling `id()` and `desc()` separately.
+    #[inline]
     fn id_desc(&self) -> Result<(&str, Option<&str>), Utf8Error> {
         let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
         Ok((h.next().unwrap(), h.next()))
@@ -875,6 +896,7 @@ pub struct RecordSet {
 }
 
 impl Default for RecordSet {
+    #[inline]
     fn default() -> RecordSet {
         RecordSet {
             buffer: vec![],
@@ -886,6 +908,8 @@ impl Default for RecordSet {
 impl<'a> iter::IntoIterator for &'a RecordSet {
     type Item = RefRecord<'a>;
     type IntoIter = RecordSetIter<'a>;
+
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         RecordSetIter {
             buffer: &self.buffer,
@@ -903,6 +927,7 @@ pub struct RecordSetIter<'a> {
 impl<'a> Iterator for RecordSetIter<'a> {
     type Item = RefRecord<'a>;
 
+    #[inline]
     fn next(&mut self) -> Option<RefRecord<'a>> {
         self.pos.next().map(|p| RefRecord {
             buffer: self.buffer,
@@ -913,6 +938,7 @@ impl<'a> Iterator for RecordSetIter<'a> {
 
 /// Helper function for writing data (not necessarily stored in a `Record` instance)
 /// to the FASTQ format
+#[inline]
 pub fn write_to<W: io::Write>(
     mut writer: W,
     head: &[u8],
@@ -932,6 +958,7 @@ pub fn write_to<W: io::Write>(
 /// Helper function for writing data (not necessarily stored in a `Record` instance)
 /// to the FASTQ format. The ID and description parts of the header are supplied separately
 /// instead of a whole header line
+#[inline]
 pub fn write_parts<W: io::Write>(
     mut writer: W,
     id: &[u8],

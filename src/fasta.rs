@@ -171,6 +171,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
+    #[inline]
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         if self.finished || !self.initialized() && !try_opt!(self.init()) {
             return None;
@@ -193,6 +194,7 @@ where
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
     /// buffer are just copied over to the record set and the positions of all records are found.
     /// Old data will be erased. Returns `None` if the input reached its end.
+    #[inline]
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
         if self.finished {
             return None;
@@ -240,7 +242,6 @@ where
     }
 
     // Sets starting points for next position
-    #[inline]
     fn next_pos(&mut self) {
         self.position.line += self.buf_pos.seq_pos.len() as u64;
         self.position.byte += (self.search_pos - self.buf_pos.start) as u64;
@@ -248,17 +249,16 @@ where
         self.buf_pos.seq_pos.clear();
     }
 
-    #[inline(always)]
     fn get_buf(&self) -> &[u8] {
         self.buf_reader.buffer()
     }
 
-    #[inline(always)]
     fn initialized(&self) -> bool {
         self.position.line != 0
     }
 
     // moves to the first record positon, ignoring newline characters
+    #[inline(never)]
     fn init(&mut self) -> Result<bool, Error> {
         if let Some((line_num, pos, byte)) = self.first_byte()? {
             if byte == b'>' {
@@ -303,7 +303,6 @@ where
 
     /// Finds the position of the next record
     /// and returns true if found; false if end of buffer reached.
-    #[inline]
     fn search(&mut self) -> Result<bool, Error> {
         if self._search() {
             return Ok(true);
@@ -321,7 +320,6 @@ where
     }
 
     // returns true if complete position found, false if end of buffer reached.
-    #[inline]
     fn _search(&mut self) -> bool {
         let bufsize = self.get_buf().len();
 
@@ -457,12 +455,14 @@ where
     /// );
     /// # }
     /// ```
+    #[inline]
     pub fn records(&mut self) -> RecordsIter<R, P> {
         RecordsIter { rdr: self }
     }
 
     /// Returns an iterator over all FASTA records like `Reader::records()`,
     /// but with the difference that it owns the underlying reader.
+    #[inline]
     pub fn into_records(self) -> RecordsIntoIter<R, P> {
         RecordsIntoIter { rdr: self }
     }
@@ -507,6 +507,7 @@ where
     /// assert_eq!(reader.next().unwrap().unwrap().to_owned_record(), record1);
     /// # }
     /// ```
+    #[inline]
     pub fn seek(&mut self, pos: &Position) -> Result<(), Error> {
         self.finished = false;
         let diff = pos.byte as i64 - self.position.byte as i64;
@@ -542,6 +543,8 @@ where
     R: io::Read + 'a,
 {
     type Item = Result<OwnedRecord, Error>;
+
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
@@ -558,6 +561,8 @@ where
     R: io::Read,
 {
     type Item = Result<OwnedRecord, Error>;
+
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rdr.next().map(|rec| rec.map(|r| r.to_owned_record()))
     }
@@ -571,16 +576,19 @@ pub struct Position {
 }
 
 impl Position {
+    #[inline]
     pub fn new(line: u64, byte: u64) -> Position {
         Position { line, byte }
     }
 
     /// Line number (starting with 1)
+    #[inline]
     pub fn line(&self) -> u64 {
         self.line
     }
 
     /// Byte offset within the file
+    #[inline]
     pub fn byte(&self) -> u64 {
         self.byte
     }
@@ -604,6 +612,7 @@ pub enum Error {
 }
 
 impl fmt::Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => e.fmt(f),
@@ -619,12 +628,14 @@ impl fmt::Display for Error {
 }
 
 impl From<io::Error> for Error {
+    #[inline]
     fn from(e: io::Error) -> Error {
         Error::Io(e)
     }
 }
 
 impl error::Error for Error {
+    #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Error::Io(ref err) => Some(err),
@@ -676,26 +687,31 @@ pub trait Record {
     ///  multi-line FASTA with a maximum width specified by `wrap`.
     fn write_wrap<W: io::Write>(&self, writer: W, wrap: usize) -> io::Result<()>;
 
+    #[inline]
     fn id_bytes(&self) -> &[u8] {
         self.head().split(|b| *b == b' ').next().unwrap()
     }
 
     /// Return the ID of the record (everything before an optional space) as string slice
+    #[inline]
     fn id(&self) -> Result<&str, Utf8Error> {
         str::from_utf8(self.id_bytes())
     }
 
+    #[inline]
     fn desc_bytes(&self) -> Option<&[u8]> {
         self.head().splitn(2, |b| *b == b' ').nth(1)
     }
 
     /// Return the description of the record as string slice, if present. Otherwise, `None` is returned.
+    #[inline]
     fn desc(&self) -> Option<Result<&str, Utf8Error>> {
         self.desc_bytes().map(str::from_utf8)
     }
 
     /// Return both the ID and the description of the record (if present)
     /// This should be faster than calling `id()` and `desc()` separately.
+    #[inline]
     fn id_desc_bytes(&self) -> (&[u8], Option<&[u8]>) {
         let mut h = self.head().splitn(2, |c| *c == b' ');
         (h.next().unwrap(), h.next())
@@ -703,6 +719,7 @@ pub trait Record {
 
     /// Return both the ID and the description of the record (if present)
     /// This should be faster than calling `id()` and `desc()` separately.
+    #[inline]
     fn id_desc(&self) -> Result<(&str, Option<&str>), Utf8Error> {
         let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
         Ok((h.next().unwrap(), h.next()))
@@ -778,6 +795,7 @@ impl<'a> RefRecord<'a> {
     /// then the sequence will be borrowed from the underlying buffer
     /// (equivalent to calling `RefRecord::seq()`). If there are multiple
     /// lines, an owned copy will be created (equivalent to `RefRecord::owned_seq()`).
+    #[inline]
     pub fn full_seq(&self) -> Cow<[u8]> {
         if self.num_seq_lines() == 1 {
             // only one line
@@ -790,6 +808,7 @@ impl<'a> RefRecord<'a> {
     /// Returns the sequence as owned `Vec`. **Note**: This function
     /// must be called in order to obtain a sequence that does not contain
     /// line endings (as returned by `seq()`)
+    #[inline]
     pub fn owned_seq(&self) -> Vec<u8> {
         let mut seq = Vec::new();
         for segment in self.seq_lines() {
@@ -799,6 +818,7 @@ impl<'a> RefRecord<'a> {
     }
 
     /// Creates an owned copy of the record.
+    #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
         OwnedRecord {
             head: self.head().to_vec(),
@@ -808,6 +828,7 @@ impl<'a> RefRecord<'a> {
 
     /// Writes a record to the given `io::Write` instance
     /// by just writing the unmodified input, which is faster than `RefRecord::write`
+    #[inline]
     pub fn write_unchanged<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
         let data = &self.buffer[self.buf_pos.start..*self.buf_pos.seq_pos.last().unwrap()];
         writer.write_all(data)?;
@@ -898,6 +919,7 @@ pub struct RecordSet {
 }
 
 impl Default for RecordSet {
+    #[inline]
     fn default() -> RecordSet {
         RecordSet {
             buffer: vec![],
@@ -910,6 +932,8 @@ impl Default for RecordSet {
 impl<'a> iter::IntoIterator for &'a RecordSet {
     type Item = RefRecord<'a>;
     type IntoIter = RecordSetIter<'a>;
+
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         RecordSetIter {
             buffer: &self.buffer,
@@ -927,6 +951,7 @@ pub struct RecordSetIter<'a> {
 impl<'a> Iterator for RecordSetIter<'a> {
     type Item = RefRecord<'a>;
 
+    #[inline]
     fn next(&mut self) -> Option<RefRecord<'a>> {
         self.pos.next().map(|p| RefRecord {
             buffer: self.buffer,
