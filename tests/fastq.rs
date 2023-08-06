@@ -44,9 +44,8 @@ fn test_fastq_reader() {
     // try different initial capacities to test
     // buffer growing feature
     for cap in 3..100 {
-        let mut exp_iter = EXPECTED.iter();
         let mut reader = Reader::with_capacity(FASTQ, cap);
-        while let Some(&(id, desc, head, seq, qual)) = exp_iter.next() {
+        for &(id, desc, head, seq, qual) in EXPECTED.iter() {
             let record = reader
                 .next()
                 .unwrap()

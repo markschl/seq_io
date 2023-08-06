@@ -67,7 +67,7 @@ fn gen_fasta(
             r
         })
         .take(nrecords)
-        .flat_map(|r| r)
+        .flatten()
         .collect()
 }
 

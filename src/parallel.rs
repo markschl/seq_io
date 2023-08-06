@@ -216,6 +216,7 @@ where
     E: Send,
     O: Send,
 {
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn next(&mut self) -> Option<Result<(&mut R, O), E>> {
         self.done_recv.recv().unwrap().map(move |result| {
@@ -432,8 +433,8 @@ where
         |d| {
             let mut iter = d.0.into_iter();
             let out: &mut Vec<O> = &mut d.1;
-            for mut x in out.iter_mut().zip(&mut iter) {
-                work(x.1, &mut x.0);
+            for x in out.iter_mut().zip(&mut iter) {
+                work(x.1, x.0);
             }
             for i in iter {
                 out.push(O::default());

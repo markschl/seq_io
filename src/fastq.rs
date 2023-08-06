@@ -23,10 +23,10 @@ const BUFSIZE: usize = 64 * 1024;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 enum SearchPos {
-    HEAD,
-    SEQ,
-    SEP,
-    QUAL,
+    Head,
+    Seq,
+    Sep,
+    Qual,
 }
 
 /// FASTQ parser.
@@ -68,7 +68,7 @@ where
         Reader {
             buf_reader: buffer_redux::BufReader::with_capacity(capacity, reader),
             buf_pos: BufferPosition::default(),
-            search_pos: SearchPos::HEAD,
+            search_pos: SearchPos::Head,
             position: Position::new(1, 0),
             finished: false,
             buf_policy: StdPolicy,
@@ -133,6 +133,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         if self.finished || !self.initialized() && !try_opt!(self.init()) {
@@ -219,22 +220,22 @@ where
     // Updates self.search_pos.
     fn find(&mut self) -> Result<bool, Error> {
         self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
-            self.search_pos = SearchPos::HEAD;
+            self.search_pos = SearchPos::Head;
             return Ok(false);
         });
 
         self.buf_pos.sep = unwrap_or!(self.find_line(self.buf_pos.seq), {
-            self.search_pos = SearchPos::SEQ;
+            self.search_pos = SearchPos::Seq;
             return Ok(false);
         });
 
         self.buf_pos.qual = unwrap_or!(self.find_line(self.buf_pos.sep), {
-            self.search_pos = SearchPos::SEP;
+            self.search_pos = SearchPos::Sep;
             return Ok(false);
         });
 
         self.buf_pos.pos.1 = unwrap_or!(self.find_line(self.buf_pos.qual), {
-            self.search_pos = SearchPos::QUAL;
+            self.search_pos = SearchPos::Qual;
             return Ok(false);
         }) - 1;
 
@@ -247,35 +248,35 @@ where
     // re-searching positions that were already found.
     // The resulting position may still be incomplete (-> false).
     fn find_incomplete(&mut self) -> Result<bool, Error> {
-        if self.search_pos == SearchPos::HEAD {
+        if self.search_pos == SearchPos::Head {
             self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
-                self.search_pos = SearchPos::HEAD;
+                self.search_pos = SearchPos::Head;
                 return Ok(false);
             });
         }
 
-        if self.search_pos <= SearchPos::SEQ {
+        if self.search_pos <= SearchPos::Seq {
             self.buf_pos.sep = unwrap_or!(self.find_line(self.buf_pos.seq), {
-                self.search_pos = SearchPos::SEQ;
+                self.search_pos = SearchPos::Seq;
                 return Ok(false);
             });
         }
 
-        if self.search_pos <= SearchPos::SEP {
+        if self.search_pos <= SearchPos::Sep {
             self.buf_pos.qual = unwrap_or!(self.find_line(self.buf_pos.sep), {
-                self.search_pos = SearchPos::SEP;
+                self.search_pos = SearchPos::Sep;
                 return Ok(false);
             });
         }
 
-        if self.search_pos <= SearchPos::QUAL {
+        if self.search_pos <= SearchPos::Qual {
             self.buf_pos.pos.1 = unwrap_or!(self.find_line(self.buf_pos.qual), {
-                self.search_pos = SearchPos::QUAL;
+                self.search_pos = SearchPos::Qual;
                 return Ok(false);
             }) - 1;
         }
 
-        self.search_pos = SearchPos::HEAD;
+        self.search_pos = SearchPos::Head;
 
         self.validate()?;
 
@@ -370,7 +371,7 @@ where
     #[inline(never)]
     fn check_end(&mut self) -> Result<bool, Error> {
         self.finished = true;
-        if self.search_pos == SearchPos::QUAL {
+        if self.search_pos == SearchPos::Qual {
             // no line ending at end of last record
             self.buf_pos.pos.1 = self.get_buf().len();
             self.validate()?;
@@ -384,7 +385,7 @@ where
         }
 
         Err(Error::UnexpectedEnd {
-            pos: self.get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::HEAD),
+            pos: self.get_error_pos(self.search_pos as u64, self.search_pos > SearchPos::Head),
         })
     }
 
@@ -405,13 +406,13 @@ where
 
         self.buf_pos.pos.0 = 0;
 
-        if self.search_pos >= SearchPos::SEQ {
+        if self.search_pos >= SearchPos::Seq {
             self.buf_pos.seq -= consumed;
         }
-        if self.search_pos >= SearchPos::SEP {
+        if self.search_pos >= SearchPos::Sep {
             self.buf_pos.sep -= consumed;
         }
-        if self.search_pos >= SearchPos::QUAL {
+        if self.search_pos >= SearchPos::Qual {
             self.buf_pos.qual -= consumed;
         }
     }
@@ -889,20 +890,10 @@ impl Record for OwnedRecord {
 
 /// Set of FASTQ records that owns it's buffer
 /// and knows the positions of each record.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
     buffer: Vec<u8>,
     buf_positions: Vec<BufferPosition>,
-}
-
-impl Default for RecordSet {
-    #[inline]
-    fn default() -> RecordSet {
-        RecordSet {
-            buffer: vec![],
-            buf_positions: vec![],
-        }
-    }
 }
 
 impl<'a> iter::IntoIterator for &'a RecordSet {

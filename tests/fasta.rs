@@ -42,13 +42,13 @@ fn test_fasta_reader() {
 
     // try different line endings
     for t in &lterms {
-        let fasta = concat_lines(FASTA, *t, false);
+        let fasta = concat_lines(FASTA, t, false);
         let exp_seqs: Vec<_> = expected
             .iter()
             .map(|&(_, _, (start, end))| {
                 (
                     // raw sequence
-                    concat_lines(&FASTA[start..end], *t, false),
+                    concat_lines(&FASTA[start..end], t, false),
                     // concatenated sequence
                     FASTA[start..end].concat().to_vec(),
                 )
@@ -58,9 +58,8 @@ fn test_fasta_reader() {
         // try different initial capacities to test
         // buffer growing feature
         for cap in 3..100 {
-            let mut exp_iter = expected.iter().zip(&exp_seqs);
             let mut reader = Reader::with_capacity(fasta.as_slice(), cap);
-            while let Some((&(id, desc, _), &(ref raw_seq, ref seq))) = exp_iter.next() {
+            for (&(id, desc, _), (raw_seq, seq)) in expected.iter().zip(&exp_seqs) {
                 let record = reader
                     .next()
                     .unwrap()

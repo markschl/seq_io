@@ -171,6 +171,7 @@ where
     ///     println!("{}", record.id().unwrap());
     /// }
     /// ```
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
         if self.finished || !self.initialized() && !try_opt!(self.init()) {
@@ -774,7 +775,7 @@ impl<'a> RefRecord<'a> {
     #[inline]
     pub fn seq_lines(&self) -> SeqLines {
         SeqLines {
-            data: &self.buffer,
+            data: self.buffer,
             len: self.buf_pos.seq_pos.len() - 1,
             pos_iter: self
                 .buf_pos
@@ -911,22 +912,11 @@ impl Record for OwnedRecord {
 
 /// Set of FASTA records that owns it'P buffer
 /// and knows the positions of each record.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RecordSet {
     buffer: Vec<u8>,
     positions: Vec<BufferPosition>,
     npos: usize,
-}
-
-impl Default for RecordSet {
-    #[inline]
-    fn default() -> RecordSet {
-        RecordSet {
-            buffer: vec![],
-            positions: vec![],
-            npos: 0,
-        }
-    }
 }
 
 impl<'a> iter::IntoIterator for &'a RecordSet {

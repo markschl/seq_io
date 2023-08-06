@@ -59,7 +59,7 @@ fn gen_fastq(
             r
         })
         .take(nrecords)
-        .flat_map(|r| r)
+        .flatten()
         .collect()
 }
 
