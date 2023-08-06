@@ -1,15 +1,9 @@
 #![allow(unused_variables)]
 
-extern crate bio;
-extern crate rand;
-extern crate rand_distr;
-extern crate rand_isaac;
-extern crate seq_io;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate criterion;
-extern crate fastq;
 
 use criterion::Criterion;
 use rand::{Rng, SeedableRng};

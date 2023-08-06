@@ -1,10 +1,5 @@
 #![allow(unused_variables)]
 
-extern crate bio;
-extern crate rand;
-extern crate rand_distr;
-extern crate rand_isaac;
-extern crate seq_io;
 #[macro_use]
 extern crate criterion;
 

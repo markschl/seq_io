@@ -422,7 +422,6 @@ where
     /// # Example
     ///
     /// ```
-    /// # extern crate seq_io;
     /// # fn main() {
     /// use seq_io::fastq::{Reader, Position};
     ///
@@ -457,7 +456,6 @@ where
     /// # Example
     ///
     /// ```
-    /// # extern crate seq_io;
     /// # fn main() {
     /// use seq_io::fastq::{Reader, OwnedRecord};
     ///
@@ -512,7 +510,6 @@ where
     /// # Example
     ///
     /// ```
-    /// # extern crate seq_io;
     /// # fn main() {
     /// use seq_io::fastq::{Reader, Position, OwnedRecord};
     /// use std::io::Cursor;
