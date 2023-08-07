@@ -1,6 +1,6 @@
 [package]
 name = "seq_io"
-version = "0.3.1"
+version = "0.3.2"
 # note: dev-depencies require at least v1.63, but seq_io alone works with 1.56.1
 rust-version = "1.56.1"
 edition = "2021"
