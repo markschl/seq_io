@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches:
-    - v0.3
+    - main
 
 # Make sure CI fails on all warnings, including Clippy lints
 env:
