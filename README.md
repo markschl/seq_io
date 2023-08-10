@@ -21,7 +21,17 @@ The FASTA parser can read and write multi-line files and allows
 iterating over the sequence lines without doing any allocation or
 copying. The FASTQ parser does not support multiple sequence / quality lines.
 
-**Simple example:**
+### Documentation
+
+[**Documentation for the stable version (0.3.x)**](https://docs.rs/seq_io)
+
+The [v0.4 branch](https://github.com/markschl/seq_io/tree/v0.4) contains code for a new
+version, which includes a FASTX reader. Although it works and has been tested to some
+extent, there will be further large changes, which are not quite ready yet.
+
+[**Documentation for development version (0.4.0-alpha.x)**](https://docs.rs/seq_io/0.4.0-alpha.0/seq_io/index.html)
+
+### Example
 Reads FASTA sequences from STDIN and writes them to STDOUT
 if long enough. Otherwise it prints a message. This should
 be very fast because the sequence is not allocated (`seq_lines()`).
@@ -51,10 +61,8 @@ grow if a record is too large to fit in. How it grows can be configured, it is
 also possible to set a size limit. Iterators over owned records are also provided.
 
 **Note:** Make sure to add `lto = true` to the release profile in `Cargo.toml`
-because calls to functions of the underlying buffered reader
-([buf_redux](https://github.com/abonander/buf_redux)) are not inlined otherwise.
-
-[View documentation](https://docs.rs/seq_io)
+for full performance. Calls to functions of the underlying buffered reader
+([buffer_redux](https://github.com/dignifiedquire/buffer-redux)) are not inlined otherwise.
 
 ### Multi-threaded processing
 
