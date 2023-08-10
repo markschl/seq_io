@@ -4,9 +4,6 @@
 ![docs.rs](https://docs.rs/seq_io/badge.svg)
 [![Build status](https://api.travis-ci.org/markschl/seq_io.png)](https://travis-ci.org/markschl/seq_io)
 
-**Note:** the master branch contains the development for version 0.4.0. The
-currently stable version is [on a separate branch](https://github.com/markschl/seq_io/tree/v0.3).
-
 This library provides readers for the the following sequence formats:
 
 * *FASTA*
