@@ -687,10 +687,10 @@ pub trait Record {
 
     #[inline]
     fn id_bytes(&self) -> &[u8] {
-        self.head().split(|b| *b == b' ').next().unwrap()
+        self.head().split(|b| *b == b' ' || *b == b'\t').next().unwrap()
     }
 
-    /// Return the ID of the record (everything before an optional space) as string slice
+    /// Return the ID of the record (everything before an optional whitespace) as string slice
     #[inline]
     fn id(&self) -> Result<&str, Utf8Error> {
         str::from_utf8(self.id_bytes())
@@ -698,7 +698,7 @@ pub trait Record {
 
     #[inline]
     fn desc_bytes(&self) -> Option<&[u8]> {
-        self.head().splitn(2, |b| *b == b' ').nth(1)
+        self.head().splitn(2, |b| *b == b' ' || *b == b'\t').nth(1)
     }
 
     /// Return the description of the record as string slice, if present. Otherwise, `None` is returned.
@@ -711,7 +711,7 @@ pub trait Record {
     /// This should be faster than calling `id()` and `desc()` separately.
     #[inline]
     fn id_desc_bytes(&self) -> (&[u8], Option<&[u8]>) {
-        let mut h = self.head().splitn(2, |c| *c == b' ');
+        let mut h = self.head().splitn(2, |c| *b == b' ' || *b == b'\t');
         (h.next().unwrap(), h.next())
     }
 
@@ -719,7 +719,7 @@ pub trait Record {
     /// This should be faster than calling `id()` and `desc()` separately.
     #[inline]
     fn id_desc(&self) -> Result<(&str, Option<&str>), Utf8Error> {
-        let mut h = str::from_utf8(self.head())?.splitn(2, ' ');
+        let mut h = str::from_utf8(self.head())?.splitn(2, char::is_whitespace);
         Ok((h.next().unwrap(), h.next()))
     }
 }
