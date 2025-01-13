@@ -177,16 +177,17 @@ where
             return None;
         }
 
-        if !self.initialized() {
-            if !try_opt!(self.init()) {
-                return None;
-            }
-            if !try_opt!(self.find()) {
-                return Some(Ok(()));
-            }
-        } else if !try_opt!(self.next_complete()) {
+        if !self.initialized() && !try_opt!(self.init()) {
             return None;
-        };
+        }
+
+        if !self.buf_pos.is_new() {
+            self.next_pos();
+        }
+
+        if !try_opt!(self.find()) && !try_opt!(self.next_complete()) {
+            return None;
+        }
 
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
