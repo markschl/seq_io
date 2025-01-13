@@ -731,7 +731,7 @@ pub struct RefRecord<'a> {
     buf_pos: &'a BufferPosition,
 }
 
-impl<'a> Record for RefRecord<'a> {
+impl Record for RefRecord<'_> {
     #[inline]
     fn head(&self) -> &[u8] {
         trim_cr(&self.buffer[self.buf_pos.start + 1..*self.buf_pos.seq_pos.first().unwrap()])
@@ -767,7 +767,7 @@ impl<'a> Record for RefRecord<'a> {
     }
 }
 
-impl<'a> RefRecord<'a> {
+impl RefRecord<'_> {
     /// Return an iterator over all sequence lines in the data
     #[inline]
     pub fn seq_lines(&self) -> SeqLines {
@@ -831,7 +831,7 @@ impl<'a> RefRecord<'a> {
         let data = &self.buffer[self.buf_pos.start..*self.buf_pos.seq_pos.last().unwrap()];
         writer.write_all(data)?;
         if *data.last().unwrap() != b'\n' {
-            writer.write_all(&[b'\n'])?;
+            writer.write_all(b"\n")?;
         }
         Ok(())
     }
@@ -870,7 +870,7 @@ impl<'a> DoubleEndedIterator for SeqLines<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for SeqLines<'a> {
+impl ExactSizeIterator for SeqLines<'_> {
     #[inline]
     fn len(&self) -> usize {
         self.len

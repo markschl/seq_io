@@ -826,7 +826,7 @@ pub struct RefRecord<'a> {
     buf_pos: &'a BufferPosition,
 }
 
-impl<'a> Record for RefRecord<'a> {
+impl Record for RefRecord<'_> {
     #[inline]
     fn head(&self) -> &[u8] {
         self.buf_pos.head(self.buffer)
@@ -843,7 +843,7 @@ impl<'a> Record for RefRecord<'a> {
     }
 }
 
-impl<'a> RefRecord<'a> {
+impl RefRecord<'_> {
     #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
         OwnedRecord {
