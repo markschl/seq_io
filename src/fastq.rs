@@ -177,16 +177,17 @@ where
             return None;
         }
 
-        if !self.initialized() {
-            if !try_opt!(self.init()) {
-                return None;
-            }
-            if !try_opt!(self.find()) {
-                return Some(Ok(()));
-            }
-        } else if !try_opt!(self.next_complete()) {
+        if !self.initialized() && !try_opt!(self.init()) {
             return None;
-        };
+        }
+
+        if !self.buf_pos.is_new() {
+            self.next_pos();
+        }
+
+        if !try_opt!(self.find()) && !try_opt!(self.next_complete()) {
+            return None;
+        }
 
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
@@ -825,7 +826,7 @@ pub struct RefRecord<'a> {
     buf_pos: &'a BufferPosition,
 }
 
-impl<'a> Record for RefRecord<'a> {
+impl Record for RefRecord<'_> {
     #[inline]
     fn head(&self) -> &[u8] {
         self.buf_pos.head(self.buffer)
@@ -842,7 +843,7 @@ impl<'a> Record for RefRecord<'a> {
     }
 }
 
-impl<'a> RefRecord<'a> {
+impl RefRecord<'_> {
     #[inline]
     pub fn to_owned_record(&self) -> OwnedRecord {
         OwnedRecord {
