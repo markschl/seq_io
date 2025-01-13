@@ -365,3 +365,35 @@ fn test_fastq_read_record_set_with_initialized_reader() {
 
     assert_eq!(&out, &FASTQ);
 }
+
+#[test]
+fn test_long_fastq_read_record_set_with_initialized_reader() {
+    use std::io::Cursor;
+
+    let mut out = vec![];
+    let long_fastq = (0..10000).fold(vec![], |mut v, idx| {
+        let fastq = format!("@id{}\nATGC\n+\n~~~~\n", idx);
+        v.extend_from_slice(fastq.as_bytes());
+        v
+    });
+    let cursor = Cursor::new(long_fastq.clone());
+
+    let mut rdr = Reader::new(cursor);
+
+    // Read + Write the first record
+    if let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+
+    // Read the rest of the records
+    let mut rset = RecordSet::default();
+    while let Some(res) = rdr.read_record_set(&mut rset) {
+        res.unwrap();
+
+        for r in rset.into_iter() {
+            r.write(&mut out).unwrap();
+        }
+    }
+
+    assert_eq!(&out, &long_fastq);
+}
