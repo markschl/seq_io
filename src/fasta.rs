@@ -988,6 +988,18 @@ pub struct RecordSet {
     npos: usize,
 }
 
+impl RecordSet {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.npos
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 impl<'a> iter::IntoIterator for &'a RecordSet {
     type Item = RefRecord<'a>;
     type IntoIter = RecordSetIter<'a>;

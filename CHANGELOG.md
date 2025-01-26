@@ -2,10 +2,9 @@
 
 ## v0.3.3 (Jan xx, 2025)
 
-* Some internal refactoring with the aim to always correctly cases where calls
-  to `next()`, `read_record_set()` and `seek()` may be mixed. 
-  Apart from [#20](https://github.com/markschl/seq_io/issues/20) may have
-  resolved some additional, undetected bugs.
+* Some internal refactoring with the aim to always correctly handle mixed calls
+  to `next()`, `read_record_set()` and `seek()`.
+* Added `len()` and `is_empty()` methods to `fasta::RecordSet` and `fastq::RecordSet`
 * Thanks to [changes in buf_redux 1.0.1](https://github.com/dignifiedquire/buffer-redux/pull/2)
   (now enforced in Cargo.toml), LTO is not necessarily required anymore for full performance.
 

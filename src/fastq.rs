@@ -957,6 +957,18 @@ pub struct RecordSet {
     buf_positions: Vec<BufferPosition>,
 }
 
+impl RecordSet {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.buf_positions.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 impl<'a> iter::IntoIterator for &'a RecordSet {
     type Item = RefRecord<'a>;
     type IntoIter = RecordSetIter<'a>;
