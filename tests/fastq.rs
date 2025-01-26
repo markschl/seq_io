@@ -341,3 +341,55 @@ fn test_fastq_write_record_unchanged() {
     }
     assert_eq!(&out, &FASTQ);
 }
+
+#[test]
+fn test_fastq_read_record_set_with_initialized_reader() {
+    let mut out = vec![];
+    let mut rdr = Reader::new(FASTQ);
+
+    // Read + Write the first record
+    if let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+
+    // Read the rest of the records
+    let mut rset = RecordSet::default();
+    if let Some(res) = rdr.read_record_set(&mut rset) {
+        res.unwrap();
+    }
+
+    // Write the rest of the records
+    for r in rset.into_iter() {
+        r.write(&mut out).unwrap();
+    }
+
+    assert_eq!(&out, &FASTQ);
+}
+
+#[test]
+fn test_long_fastq_read_record_set_with_initialized_reader() {
+    let mut out = vec![];
+    let long_fastq = (0..10000).fold(vec![], |mut v, idx| {
+        let fastq = format!("@id{}\nATGC\n+\n~~~~\n", idx);
+        v.extend_from_slice(fastq.as_bytes());
+        v
+    });
+    let mut rdr = Reader::new(&long_fastq[..]);
+
+    // Read + Write the first record
+    if let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+
+    // Read the rest of the records
+    let mut rset = RecordSet::default();
+    while let Some(res) = rdr.read_record_set(&mut rset) {
+        res.unwrap();
+
+        for r in rset.into_iter() {
+            r.write(&mut out).unwrap();
+        }
+    }
+
+    assert_eq!(&out, &long_fastq);
+}

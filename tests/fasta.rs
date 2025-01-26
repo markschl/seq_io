@@ -341,3 +341,57 @@ fn test_fasta_write_seq_iter_wrap() {
         assert_eq!(&out, b"AAAA\nTTTT\nGGG\n");
     }
 }
+
+#[test]
+fn test_fasta_read_record_set_with_initialized_reader() {
+    let mut out = vec![];
+    let fasta = b">id\nACGT\n";
+    let mut rdr = Reader::new(&fasta[..]);
+
+    // Read + Write the first record
+    if let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+
+    // Read the rest of the records
+    let mut rset = RecordSet::default();
+    if let Some(res) = rdr.read_record_set(&mut rset) {
+        res.unwrap();
+    }
+
+    // Write the rest of the records
+    for r in rset.into_iter() {
+        r.write(&mut out).unwrap();
+    }
+
+    assert_eq!(&out, fasta);
+}
+
+#[test]
+fn test_long_fasta_read_record_set_with_initialized_reader() {
+    let mut out = vec![];
+    let long_fasta = (0..10000).fold(vec![], |mut v, idx| {
+        let fastq = format!(">id{}\nATGC\n", idx);
+        v.extend_from_slice(fastq.as_bytes());
+        v
+    });
+
+    let mut rdr = Reader::new(&long_fasta[..]);
+
+    // Read + Write the first record
+    if let Some(Ok(r)) = rdr.next() {
+        r.write(&mut out).unwrap();
+    }
+
+    // Read the rest of the records
+    let mut rset = RecordSet::default();
+    while let Some(res) = rdr.read_record_set(&mut rset) {
+        res.unwrap();
+
+        for r in rset.into_iter() {
+            r.write(&mut out).unwrap();
+        }
+    }
+
+    assert_eq!(&out, &long_fasta);
+}
