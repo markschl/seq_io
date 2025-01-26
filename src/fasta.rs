@@ -64,13 +64,34 @@ type DefaultPolicy = StdPolicy;
 
 const BUFSIZE: usize = 64 * 1024;
 
+/// Reader state
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+enum State {
+    /// Uninitialized (buffer not filled yet)
+    New,
+    /// Regular parsing with `next()`, always leading to a complete
+    /// record being found (or EOF); `buf_pos` points to the
+    /// last parsed record.
+    Parsing,
+    /// Parsing was stopped in the middle, since the current (last) record does
+    /// not fit into the buffer. This happens after `read_record_set()`.
+    Incomplete,
+    /// The record coordinates stored in the reader (`buf_pos`)
+    /// point to the record *to be parsed next*.
+    /// This occurs after `seek()`. Opposite to `Incomplete`, parsing of the
+    /// current record has not started.
+    Positioned,
+    /// Parsing finished
+    Finished,
+}
+
 /// Parser for FASTA files.
 pub struct Reader<R: io::Read, P = DefaultPolicy> {
     buf_reader: buffer_redux::BufReader<R>,
     buf_pos: BufferPosition,
     position: Position,
     search_pos: usize,
-    finished: bool,
+    state: State,
     buf_policy: P,
 }
 
@@ -108,7 +129,7 @@ where
             },
             position: Position::new(0, 0),
             search_pos: 0,
-            finished: false,
+            state: State::New,
             buf_policy: StdPolicy,
         }
     }
@@ -145,7 +166,7 @@ where
             buf_pos: self.buf_pos,
             position: self.position,
             search_pos: self.search_pos,
-            finished: self.finished,
+            state: self.state,
             buf_policy: policy,
         }
     }
@@ -174,16 +195,37 @@ where
     #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn next(&mut self) -> Option<Result<RefRecord, Error>> {
-        if self.finished || !self.initialized() && !try_opt!(self.init()) {
-            return None;
+        // after next(), the state is always Parsing or Finished
+        match self.state {
+            State::New => {
+                if !try_opt!(self.init()) {
+                    return None;
+                }
+                self.state = State::Parsing;
+            }
+            State::Positioned => {
+                self.state = State::Parsing;
+            }
+            State::Finished => {
+                return None;
+            }
+            State::Parsing => {
+                self.increment_record();
+            }
+            State::Incomplete => {}
+        };
+
+        if self.state != State::Incomplete {
+            try_opt!(self.search());
         }
 
-        if !self.buf_pos.is_new() {
-            self.next_pos();
-        }
-
-        if !try_opt!(self.search()) && !try_opt!(self.next_complete()) {
-            return None;
+        if self.state == State::Incomplete {
+            if !try_opt!(self.resume_incomplete_search()) {
+                return None;
+            }
+            if self.state != State::Finished {
+                self.state = State::Parsing;
+            }
         }
 
         Some(Ok(RefRecord {
@@ -195,55 +237,81 @@ where
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
     /// buffer are just copied over to the record set and the positions of all records are found.
     /// Old data will be erased. Returns `None` if the input reached its end.
+    // TODO: in next major version, return Result<bool> instead!
     #[inline]
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
-        if self.finished {
-            return None;
-        }
-
-        if !self.initialized() {
-            if !try_opt!(self.init()) {
+        // after read_record_set(), the state is always Positioned, Parsing or Finished
+        match self.state {
+            State::New => {
+                if !try_opt!(self.init()) {
+                    return None;
+                }
+                self.state = State::Positioned;
+            }
+            State::Finished => {
                 return None;
             }
-            if !try_opt!(self.search()) {
-                return Some(Ok(()));
+            State::Parsing => {
+                // next() was previously called, the current record has
+                // already been returned -> start parsing the next one
+                self.increment_record();
+                self.state = State::Positioned;
             }
-        } else if !try_opt!(self.next_complete()) {
-            return None;
+            State::Positioned | State::Incomplete => {
+                // Incomplete: The previous read_record_set() call left the last record
+                //   incomplete; searching is resumed at the next resume_incomplete_search() call.
+                // Positioned: A seek() to a position reachable from within the current buffer
+                //  was done.
+            }
         };
 
-        // copy buffer AFTER call to next_complete (initialization of buffer is done there)
+        rset.npos = 0;
+
+        while self.state != State::Finished {
+            if self.state == State::Incomplete {
+                // resume incomplete search after previous read_record_set(), or
+                if !try_opt!(self.resume_incomplete_search()) {
+                    return None;
+                }
+                // reset state to Positioned
+                if self.state != State::Finished {
+                    self.state = State::Positioned;
+                }
+            } else {
+                // search the next complete record after `next()`, or in 
+                // later iterations of this loop
+                if !try_opt!(self.search()) {
+                    if rset.npos == 0 {
+                        // at least one record must be present; if not, continue
+                        // with `resume_incomplete_search()` in next iteration
+                        continue;
+                    }
+                    break;
+                }
+            }
+            // at least one record must be present as a whole in the buffer
+            if let Some(pos) = rset.positions.get_mut(rset.npos) {
+                pos.update(&self.buf_pos);
+                // pos.clone_from(&self.buf_pos);
+            } else {
+                rset.positions.push(self.buf_pos.clone());
+            }
+            rset.npos += 1;
+            self.increment_record();
+        }
+
+        if rset.npos == 0 {
+            // TODO: necessary?
+            return None;
+        }
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
+        Some(Ok(()))
 
-        // Update records that are already in the positions vector
-        let mut n = 0;
-        for pos in &mut rset.positions {
-            n += 1;
-            pos.update(&self.buf_pos);
-
-            self.next_pos();
-            if self.finished || !try_opt!(self.search()) {
-                rset.npos = n;
-                return Some(Ok(()));
-            }
-        }
-
-        // Add more positions if necessary
-        loop {
-            n += 1;
-            rset.positions.push(self.buf_pos.clone());
-
-            self.next_pos();
-            if self.finished || !try_opt!(self.search()) {
-                rset.npos = n;
-                return Some(Ok(()));
-            }
-        }
     }
 
     // Sets starting points for next position
-    fn next_pos(&mut self) {
+    fn increment_record(&mut self) {
         self.position.line += self.buf_pos.seq_pos.len() as u64;
         self.position.byte += (self.search_pos - self.buf_pos.start) as u64;
         self.buf_pos.start = self.search_pos;
@@ -252,10 +320,6 @@ where
 
     fn get_buf(&self) -> &[u8] {
         self.buf_reader.buffer()
-    }
-
-    fn initialized(&self) -> bool {
-        self.position.line != 0
     }
 
     // moves to the first record positon, ignoring newline characters
@@ -269,14 +333,14 @@ where
                 self.search_pos = pos + 1;
                 return Ok(true);
             } else {
-                self.finished = true;
+                self.state = State::Finished;
                 return Err(Error::InvalidStart {
                     line: line_num,
                     found: byte,
                 });
             }
         }
-        self.finished = true;
+        self.state = State::Finished;
         Ok(false)
     }
 
@@ -304,6 +368,7 @@ where
 
     /// Finds the position of the next record
     /// and returns true if found; false if end of buffer reached.
+    // Note: sets the state to Finished or Incomplete, but does not reset to Parsing/... in case of success
     fn search(&mut self) -> Result<bool, Error> {
         if self._search() {
             return Ok(true);
@@ -312,11 +377,12 @@ where
         // nothing found
         if self.get_buf().len() < self.buf_reader.capacity() {
             // EOF reached, there will be no next record
-            self.finished = true;
+            self.state = State::Finished;
             self.buf_pos.seq_pos.push(self.search_pos);
             return Ok(true);
         }
 
+        self.state = State::Incomplete;
         Ok(false)
     }
 
@@ -348,12 +414,12 @@ where
         false
     }
 
-    /// To be called when the end of the buffer is reached and `next_pos` does not find
+    /// To be called when the end of the buffer is reached and `search` does not find
     /// the next record. Incomplete bytes will be moved to the start of the buffer.
     /// If the record still doesn't fit in, the buffer will be enlarged.
     /// After calling this function, the position will therefore always be 'complete'.
-    /// this function assumes that the buffer was fully searched
-    fn next_complete(&mut self) -> Result<bool, Error> {
+    /// This function assumes that the buffer was fully searched.
+    fn resume_incomplete_search(&mut self) -> Result<bool, Error> {
         loop {
             if self.buf_pos.start == 0 {
                 // first record -> buffer too small
@@ -417,6 +483,10 @@ where
     /// assert_eq!(reader.position(), Some(&Position::new(3, 10)));
     /// # }
     /// ```
+    /// 
+    /// **Note:** After [read_record_set](Self::read_record_set), `position()`
+    /// returns the position of the *next record after* the last record in the
+    /// record set.
     #[inline]
     pub fn position(&self) -> Option<&Position> {
         if self.buf_pos.is_new() {
@@ -506,21 +576,23 @@ where
     /// # }
     /// ```
     #[inline]
-    pub fn seek(&mut self, pos: &Position) -> Result<(), Error> {
-        self.finished = false;
-        let diff = pos.byte as i64 - self.position.byte as i64;
-        let rel_pos = self.buf_pos.start as i64 + diff;
-        if rel_pos >= 0 && rel_pos < (self.get_buf().len() as i64) {
+    pub fn seek(&mut self, to: &Position) -> Result<(), Error> {
+        // TODO: does not handle unrealistically large buffers
+        let offset = to.byte as i64 - self.position.byte as i64;
+        let pos = self.buf_pos.start as i64 + offset;
+        self.position = to.clone();
+        self.state = State::Positioned;
+
+        if pos >= 0 && pos < (self.get_buf().len() as i64) {
             // position reachable within buffer -> no actual seeking necessary
-            self.search_pos = rel_pos as usize;
-            self.buf_pos.reset(rel_pos as usize);
-            self.position = pos.clone();
+            self.search_pos = pos as usize;
+            self.buf_pos.reset(pos as usize);
             return Ok(());
         }
-        self.position = pos.clone();
-        self.search_pos = 0;
-        self.buf_reader.seek(io::SeekFrom::Start(pos.byte))?;
+
+        self.buf_reader.seek(io::SeekFrom::Start(to.byte))?;
         fill_buf(&mut self.buf_reader)?;
+        self.search_pos = 0;
         self.buf_pos.reset(0);
         Ok(())
     }
@@ -572,7 +644,6 @@ pub struct Position {
     line: u64,
     byte: u64,
 }
-
 impl Position {
     #[inline]
     pub fn new(line: u64, byte: u64) -> Position {
@@ -731,7 +802,7 @@ pub struct RefRecord<'a> {
     buf_pos: &'a BufferPosition,
 }
 
-impl<'a> Record for RefRecord<'a> {
+impl Record for RefRecord<'_> {
     #[inline]
     fn head(&self) -> &[u8] {
         trim_cr(&self.buffer[self.buf_pos.start + 1..*self.buf_pos.seq_pos.first().unwrap()])
@@ -767,7 +838,7 @@ impl<'a> Record for RefRecord<'a> {
     }
 }
 
-impl<'a> RefRecord<'a> {
+impl RefRecord<'_> {
     /// Return an iterator over all sequence lines in the data
     #[inline]
     pub fn seq_lines(&self) -> SeqLines {
@@ -831,7 +902,7 @@ impl<'a> RefRecord<'a> {
         let data = &self.buffer[self.buf_pos.start..*self.buf_pos.seq_pos.last().unwrap()];
         writer.write_all(data)?;
         if *data.last().unwrap() != b'\n' {
-            writer.write_all(&[b'\n'])?;
+            writer.write_all(b"\n")?;
         }
         Ok(())
     }
@@ -870,7 +941,7 @@ impl<'a> DoubleEndedIterator for SeqLines<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for SeqLines<'a> {
+impl ExactSizeIterator for SeqLines<'_> {
     #[inline]
     fn len(&self) -> usize {
         self.len
