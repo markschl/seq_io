@@ -60,9 +60,9 @@ therefore the `while let` is required. By default, the buffer will automatically
 grow if a record is too large to fit in. How it grows can be configured, it is
 also possible to set a size limit. Iterators over owned records are also provided.
 
-**Note:** Make sure to add `lto = true` to the release profile in `Cargo.toml`
-for full performance. Calls to functions of the underlying buffered reader
-([buffer_redux](https://github.com/dignifiedquire/buffer-redux)) are not inlined otherwise.
+**Note:** [LTO](https://doc.rust-lang.org/cargo/reference/profiles.html#lto)
+might be evaluated to see, whether it improves performance. But generally, library should
+work reasonably fast without LTO, too.
 
 ### Multi-threaded processing
 
