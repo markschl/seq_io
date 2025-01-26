@@ -300,10 +300,6 @@ where
             self.increment_record();
         }
 
-        if rset.npos == 0 {
-            // TODO: necessary?
-            return None;
-        }
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
         Some(Ok(()))
