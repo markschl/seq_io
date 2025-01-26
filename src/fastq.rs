@@ -191,16 +191,6 @@ where
         }))
     }
 
-    #[inline(never)]
-    fn init(&mut self) -> Result<bool, Error> {
-        let n = fill_buf(&mut self.buf_reader)?;
-        if n == 0 {
-            self.state = State::Finished;
-            return Ok(false);
-        }
-        Ok(true)
-    }
-
     /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
     /// buffer are just copied over to the record set and the positions of all records are found.
     /// Old data will be erased. Returns `None` if the input reached its end.
@@ -242,7 +232,7 @@ where
                     return None;
                 }
             } else {
-                // search the next complete record after `next()`, or in 
+                // search the next complete record after `next()`, or in
                 // later iterations of this loop
                 if try_opt!(self.search()).is_some() {
                     if rset.buf_positions.is_empty() {
@@ -264,7 +254,17 @@ where
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
         Some(Ok(()))
-}
+    }
+
+    #[inline(never)]
+    fn init(&mut self) -> Result<bool, Error> {
+        let n = fill_buf(&mut self.buf_reader)?;
+        if n == 0 {
+            self.state = State::Finished;
+            return Ok(false);
+        }
+        Ok(true)
+    }
 
     fn get_buf(&self) -> &[u8] {
         self.buf_reader.buffer()
@@ -304,97 +304,6 @@ where
         self.validate()?;
 
         Ok(None)
-    }
-
-    // Resumes reading an incomplete record without
-    // re-searching positions that were already found.
-    // The resulting position may still be incomplete (-> Some(RecordPos)).
-    fn search_incomplete(&mut self, pos: RecordPos) -> Result<Option<RecordPos>, Error> {
-        if pos == RecordPos::Head {
-            self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
-                self.incomplete_pos = Some(RecordPos::Head);
-                return Ok(self.incomplete_pos);
-            });
-        }
-
-        if pos <= RecordPos::Seq {
-            self.buf_pos.sep = unwrap_or!(self.find_line(self.buf_pos.seq), {
-                self.incomplete_pos = Some(RecordPos::Seq);
-                return Ok(self.incomplete_pos);
-            });
-        }
-
-        if pos <= RecordPos::Sep {
-            self.buf_pos.qual = unwrap_or!(self.find_line(self.buf_pos.sep), {
-                self.incomplete_pos = Some(RecordPos::Sep);
-                return Ok(self.incomplete_pos);
-            });
-        }
-
-        if pos <= RecordPos::Qual {
-            self.buf_pos.pos.1 = unwrap_or!(self.find_line(self.buf_pos.qual), {
-                self.incomplete_pos = Some(RecordPos::Qual);
-                return Ok(self.incomplete_pos);
-            }) - 1;
-        }
-
-        self.incomplete_pos = None;
-
-        self.validate()?;
-        Ok(None)
-    }
-
-    // should only be called on a complete BufferPosition
-    #[inline(always)] // has performance impact and would not be inlined otherwise
-    fn validate(&mut self) -> Result<(), Error> {
-        let start_byte = self.get_buf()[self.buf_pos.pos.0];
-        if start_byte != b'@' {
-            self.state = State::Finished;
-            return Err(Error::InvalidStart {
-                found: start_byte,
-                pos: self.get_error_pos(0, false),
-            });
-        }
-
-        let sep_byte = self.get_buf()[self.buf_pos.sep];
-        if sep_byte != b'+' {
-            self.state = State::Finished;
-            return Err(Error::InvalidSep {
-                found: sep_byte,
-                pos: self.get_error_pos(2, true),
-            });
-        }
-
-        let qual_len = self.buf_pos.pos.1 - self.buf_pos.qual + 1;
-        let seq_len = self.buf_pos.sep - self.buf_pos.seq;
-        if seq_len != qual_len {
-            self.state = State::Finished;
-            return Err(Error::UnequalLengths {
-                seq: self.buf_pos.seq(self.get_buf()).len(),
-                qual: self.buf_pos.qual(self.get_buf()).len(),
-                pos: self.get_error_pos(0, true),
-            });
-        }
-        Ok(())
-    }
-
-    #[inline(never)]
-    fn get_error_pos(&self, line_offset: u64, parse_id: bool) -> ErrorPosition {
-        let id = if parse_id && self.buf_pos.seq - self.buf_pos.pos.0 > 1 {
-            let id = self
-                .buf_pos
-                .head(self.get_buf())
-                .split(|b| *b == b' ')
-                .next()
-                .unwrap();
-            Some(String::from_utf8_lossy(id).into())
-        } else {
-            None
-        };
-        ErrorPosition {
-            line: self.position.line + line_offset,
-            id,
-        }
     }
 
     fn find_line(&self, search_start: usize) -> Option<usize> {
@@ -451,6 +360,44 @@ where
         })
     }
 
+    // Resumes reading an incomplete record without
+    // re-searching positions that were already found.
+    // The resulting position may still be incomplete (-> Some(RecordPos)).
+    fn search_incomplete(&mut self, pos: RecordPos) -> Result<Option<RecordPos>, Error> {
+        if pos == RecordPos::Head {
+            self.buf_pos.seq = unwrap_or!(self.find_line(self.buf_pos.pos.0), {
+                self.incomplete_pos = Some(RecordPos::Head);
+                return Ok(self.incomplete_pos);
+            });
+        }
+
+        if pos <= RecordPos::Seq {
+            self.buf_pos.sep = unwrap_or!(self.find_line(self.buf_pos.seq), {
+                self.incomplete_pos = Some(RecordPos::Seq);
+                return Ok(self.incomplete_pos);
+            });
+        }
+
+        if pos <= RecordPos::Sep {
+            self.buf_pos.qual = unwrap_or!(self.find_line(self.buf_pos.sep), {
+                self.incomplete_pos = Some(RecordPos::Sep);
+                return Ok(self.incomplete_pos);
+            });
+        }
+
+        if pos <= RecordPos::Qual {
+            self.buf_pos.pos.1 = unwrap_or!(self.find_line(self.buf_pos.qual), {
+                self.incomplete_pos = Some(RecordPos::Qual);
+                return Ok(self.incomplete_pos);
+            }) - 1;
+        }
+
+        self.incomplete_pos = None;
+
+        self.validate()?;
+        Ok(None)
+    }
+
     // grow buffer based on policy
     fn grow(&mut self) -> Result<(), Error> {
         let cap = self.buf_reader.capacity();
@@ -476,6 +423,59 @@ where
         }
         if incomplete_pos >= RecordPos::Qual {
             self.buf_pos.qual -= consumed;
+        }
+    }
+
+    // should only be called on a complete BufferPosition
+    #[inline(always)] // has performance impact and would not be inlined otherwise
+    fn validate(&mut self) -> Result<(), Error> {
+        let start_byte = self.get_buf()[self.buf_pos.pos.0];
+        if start_byte != b'@' {
+            self.state = State::Finished;
+            return Err(Error::InvalidStart {
+                found: start_byte,
+                pos: self.get_error_pos(0, false),
+            });
+        }
+
+        let sep_byte = self.get_buf()[self.buf_pos.sep];
+        if sep_byte != b'+' {
+            self.state = State::Finished;
+            return Err(Error::InvalidSep {
+                found: sep_byte,
+                pos: self.get_error_pos(2, true),
+            });
+        }
+
+        let qual_len = self.buf_pos.pos.1 - self.buf_pos.qual + 1;
+        let seq_len = self.buf_pos.sep - self.buf_pos.seq;
+        if seq_len != qual_len {
+            self.state = State::Finished;
+            return Err(Error::UnequalLengths {
+                seq: self.buf_pos.seq(self.get_buf()).len(),
+                qual: self.buf_pos.qual(self.get_buf()).len(),
+                pos: self.get_error_pos(0, true),
+            });
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn get_error_pos(&self, line_offset: u64, parse_id: bool) -> ErrorPosition {
+        let id = if parse_id && self.buf_pos.seq - self.buf_pos.pos.0 > 1 {
+            let id = self
+                .buf_pos
+                .head(self.get_buf())
+                .split(|b| *b == b' ')
+                .next()
+                .unwrap();
+            Some(String::from_utf8_lossy(id).into())
+        } else {
+            None
+        };
+        ErrorPosition {
+            line: self.position.line + line_offset,
+            id,
         }
     }
 
@@ -506,7 +506,7 @@ where
     /// assert_eq!(reader.position(), &Position::new(5, 17));
     /// # }
     /// ```
-    /// 
+    ///
     /// **Note:** After [read_record_set](Self::read_record_set), `position()`
     /// returns the position of the *next record after* the last record in the
     /// record set.

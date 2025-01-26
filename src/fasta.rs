@@ -278,7 +278,7 @@ where
                     self.state = State::Positioned;
                 }
             } else {
-                // search the next complete record after `next()`, or in 
+                // search the next complete record after `next()`, or in
                 // later iterations of this loop
                 if !try_opt!(self.search()) {
                     if rset.npos == 0 {
@@ -307,19 +307,6 @@ where
         rset.buffer.clear();
         rset.buffer.extend(self.get_buf());
         Some(Ok(()))
-
-    }
-
-    // Sets starting points for next position
-    fn increment_record(&mut self) {
-        self.position.line += self.buf_pos.seq_pos.len() as u64;
-        self.position.byte += (self.search_pos - self.buf_pos.start) as u64;
-        self.buf_pos.start = self.search_pos;
-        self.buf_pos.seq_pos.clear();
-    }
-
-    fn get_buf(&self) -> &[u8] {
-        self.buf_reader.buffer()
     }
 
     // moves to the first record positon, ignoring newline characters
@@ -364,6 +351,18 @@ where
             self.buf_reader.make_room();
         }
         Ok(None)
+    }
+
+    fn get_buf(&self) -> &[u8] {
+        self.buf_reader.buffer()
+    }
+
+    // Sets starting points for next position
+    fn increment_record(&mut self) {
+        self.position.line += self.buf_pos.seq_pos.len() as u64;
+        self.position.byte += (self.search_pos - self.buf_pos.start) as u64;
+        self.buf_pos.start = self.search_pos;
+        self.buf_pos.seq_pos.clear();
     }
 
     /// Finds the position of the next record
@@ -483,7 +482,7 @@ where
     /// assert_eq!(reader.position(), Some(&Position::new(3, 10)));
     /// # }
     /// ```
-    /// 
+    ///
     /// **Note:** After [read_record_set](Self::read_record_set), `position()`
     /// returns the position of the *next record after* the last record in the
     /// record set.
@@ -644,6 +643,7 @@ pub struct Position {
     line: u64,
     byte: u64,
 }
+
 impl Position {
     #[inline]
     pub fn new(line: u64, byte: u64) -> Position {
