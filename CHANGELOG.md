@@ -1,5 +1,18 @@
 # seq_io change log
 
+## v0.3.3 (Jan xx, 2025)
+
+* Some internal refactoring with the aim to always correctly cases where calls
+  to `next()`, `read_record_set()` and `seek()` may be mixed. 
+  Apart from [#20](https://github.com/markschl/seq_io/issues/20) may have
+  resolved some additional, undetected bugs.
+* Thanks to [changes in buf_redux 1.0.1](https://github.com/dignifiedquire/buffer-redux/pull/2)
+  (now enforced in Cargo.toml), LTO is not necessarily required anymore for full performance.
+
+**Bug fixes**
+* Fix issue where calling `read_record_set()` after `next()` lead to incorrect
+  reading ([#20](https://github.com/markschl/seq_io/issues/20))
+
 ## v0.3.2 (Aug 07, 2023)
 
 This version mostly updated all the dependencies and switched to using
