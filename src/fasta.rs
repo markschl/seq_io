@@ -353,6 +353,7 @@ where
         Ok(None)
     }
 
+    #[inline]
     fn get_buf(&self) -> &[u8] {
         self.buf_reader.buffer()
     }

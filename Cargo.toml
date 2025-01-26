@@ -17,7 +17,7 @@ exclude = [
 
 [dependencies]
 memchr = "2.5.0"
-buffer-redux = { version = "1.0.0", default_features = false }
+buffer-redux = { version = "~1.0.1", default_features = false }
 scoped_threadpool = "0.1"
 crossbeam-utils = "0.8"
 serde = "1.0"
