@@ -159,7 +159,10 @@ impl Reader<File, DefaultPolicy> {
     /// if configured so with an according [buffer policy](policy).
     /// The minimum allowed capacity is 3.
     #[inline]
-    pub fn from_path_with_capacity<P: AsRef<Path>>(path: P, cap: usize) -> io::Result<Reader<File>> {
+    pub fn from_path_with_capacity<P: AsRef<Path>>(
+        path: P,
+        cap: usize,
+    ) -> io::Result<Reader<File>> {
         File::open(path).map(|f| Reader::with_capacity(f, cap))
     }
 }

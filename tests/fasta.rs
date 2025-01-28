@@ -398,7 +398,7 @@ fn test_long_fasta_read_record_set_with_initialized_reader() {
 
 #[test]
 fn test_fasta_mixed_read_seek() {
-    use io::{Write, Cursor};
+    use io::{Cursor, Write};
     let mut fasta = Vec::with_capacity(13 * 100);
     let mut l5 = 0;
     for i in 1..101 {
@@ -430,7 +430,7 @@ fn test_fasta_mixed_read_seek() {
                 }
             }
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write_wrap(&mut out, 2).unwrap();
         }
         rdr.seek(&pos10).unwrap();
@@ -455,11 +455,11 @@ fn test_fasta_mixed_read_seek() {
                 }
             }
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write_wrap(&mut out, 2).unwrap();
         }
         rdr.seek(&pos0).unwrap();
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write_wrap(&mut out, 2).unwrap();
         }
         assert_eq!(&out[..l100], &fasta);
@@ -472,7 +472,7 @@ fn test_fasta_mixed_read_seek() {
         for r in rset.into_iter() {
             r.write_wrap(&mut out, 2).unwrap();
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write_wrap(&mut out, 2).unwrap();
         }
         assert_eq!(&out, &fasta);

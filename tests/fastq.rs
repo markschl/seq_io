@@ -397,7 +397,7 @@ fn test_long_fastq_read_record_set_with_initialized_reader() {
 
 #[test]
 fn test_fastq_mixed_read_seek() {
-    use io::{Write, Cursor};
+    use io::{Cursor, Write};
     let mut fastq = Vec::with_capacity(19 * 100);
     let mut l5 = 0;
     for i in 1..101 {
@@ -429,7 +429,7 @@ fn test_fastq_mixed_read_seek() {
                 }
             }
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write(&mut out).unwrap();
         }
         rdr.seek(&pos10).unwrap();
@@ -454,11 +454,11 @@ fn test_fastq_mixed_read_seek() {
                 }
             }
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write(&mut out).unwrap();
         }
         rdr.seek(&pos0).unwrap();
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write(&mut out).unwrap();
         }
         assert_eq!(&out[..l100], &fastq);
@@ -471,7 +471,7 @@ fn test_fastq_mixed_read_seek() {
         for r in rset.into_iter() {
             r.write(&mut out).unwrap();
         }
-        while let Some(r) = rdr.next()  {
+        while let Some(r) = rdr.next() {
             r.unwrap().write(&mut out).unwrap();
         }
         assert_eq!(&out, &fastq);
