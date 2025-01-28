@@ -395,3 +395,86 @@ fn test_long_fasta_read_record_set_with_initialized_reader() {
 
     assert_eq!(&out, &long_fasta);
 }
+
+#[test]
+fn test_fasta_mixed_read_seek() {
+    use io::{Write, Cursor};
+    let mut fasta = Vec::with_capacity(13 * 100);
+    let mut l5 = 0;
+    for i in 1..101 {
+        if i == 5 {
+            // position at start of 5th record
+            l5 = fasta.len();
+        }
+        write!(&mut fasta, ">id{}\nAT\nGC\n", i).unwrap();
+    }
+    let l100 = fasta.len();
+
+    let mut out = vec![];
+    let mut rset = RecordSet::default();
+
+    for cap in (3..10000).step_by(100) {
+        out.clear();
+        let mut rdr = Reader::with_capacity(Cursor::new(&fasta[..]), cap);
+
+        // sequence 1
+        for _ in 0..5 {
+            let r = rdr.next().unwrap().unwrap();
+            r.write_wrap(&mut out, 2).unwrap();
+        }
+        let pos10 = rdr.position().unwrap().clone();
+        for _ in 0..2 {
+            if rdr.read_record_set(&mut rset).is_some() {
+                for r in rset.into_iter() {
+                    r.write_wrap(&mut out, 2).unwrap();
+                }
+            }
+        }
+        while let Some(r) = rdr.next()  {
+            r.unwrap().write_wrap(&mut out, 2).unwrap();
+        }
+        rdr.seek(&pos10).unwrap();
+        while rdr.read_record_set(&mut rset).is_some() {
+            for r in rset.into_iter() {
+                r.write_wrap(&mut out, 2).unwrap();
+            }
+        }
+        assert_eq!(&out[..l100], &fasta);
+        assert_eq!(&out[l100..], &fasta[l5..]);
+
+        // sequence 2
+        out.clear();
+        let mut rdr = Reader::with_capacity(Cursor::new(&fasta[..]), cap);
+        let r = rdr.next().unwrap().unwrap();
+        r.write_wrap(&mut out, 2).unwrap();
+        let pos0 = rdr.position().unwrap().clone();
+        for _ in 0..2 {
+            if rdr.read_record_set(&mut rset).is_some() {
+                for r in rset.into_iter() {
+                    r.write_wrap(&mut out, 2).unwrap();
+                }
+            }
+        }
+        while let Some(r) = rdr.next()  {
+            r.unwrap().write_wrap(&mut out, 2).unwrap();
+        }
+        rdr.seek(&pos0).unwrap();
+        while let Some(r) = rdr.next()  {
+            r.unwrap().write_wrap(&mut out, 2).unwrap();
+        }
+        assert_eq!(&out[..l100], &fasta);
+        assert_eq!(&out[l100..], &fasta);
+
+        // sequence 3
+        out.clear();
+        let mut rdr = Reader::with_capacity(Cursor::new(&fasta[..]), cap);
+        assert!(rdr.read_record_set(&mut rset).is_some());
+        for r in rset.into_iter() {
+            r.write_wrap(&mut out, 2).unwrap();
+        }
+        while let Some(r) = rdr.next()  {
+            r.unwrap().write_wrap(&mut out, 2).unwrap();
+        }
+        assert_eq!(&out, &fasta);
+    }
+}
