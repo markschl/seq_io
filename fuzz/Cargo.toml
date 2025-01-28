@@ -6,7 +6,7 @@ authors = ["Automatically generated"]
 publish = false
 
 [dependencies]
-criterion = { version = "0.5", default_features = false }
+criterion = { version = "0.5", default-features = false }
 bio = "2.0"
 matches = "0.1"
 
