@@ -80,8 +80,10 @@ where
         Reader::with_capacity(reader, BUFSIZE)
     }
 
-    /// Creates a new reader with a given buffer capacity. The minimum allowed
-    /// capacity is 3.
+    /// Creates a new reader with a given (initial) buffer capacity.
+    /// The reader will enlarge the buffer as needed, but may hit a hard limit
+    /// if configured so with an according [buffer policy](policy).
+    /// The minimum allowed capacity is 3.
     #[inline]
     pub fn with_capacity(reader: R, capacity: usize) -> Reader<R, StdPolicy> {
         assert!(capacity >= 3);
@@ -111,6 +113,15 @@ impl Reader<File, DefaultBufPolicy> {
     #[inline]
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Reader<File>> {
         File::open(path).map(Reader::new)
+    }
+
+    /// Creates a reader from a file path with a given (initial) buffer capacity.
+    /// The reader will enlarge the buffer as needed, but may hit a hard limit
+    /// if configured so with an according [buffer policy](policy).
+    /// The minimum allowed capacity is 3.
+    #[inline]
+    pub fn from_path_with_capacity<P: AsRef<Path>>(path: P, cap: usize) -> io::Result<Reader<File>> {
+        File::open(path).map(|f| Reader::with_capacity(f, cap))
     }
 }
 

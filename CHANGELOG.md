@@ -5,6 +5,7 @@
 * Some internal refactoring with the aim to always correctly handle mixed calls
   to `next()`, `read_record_set()` and `seek()`.
 * Added `len()` and `is_empty()` methods to `fasta::RecordSet` and `fastq::RecordSet`
+* Added `from_path_with_capacity()` to the FASTA and FASTQ readers
 * Thanks to [changes in buf_redux 1.0.1](https://github.com/dignifiedquire/buffer-redux/pull/2)
   (now enforced in Cargo.toml), LTO is not necessarily required anymore for full performance.
 
