@@ -369,14 +369,14 @@ fn test_fasta_read_record_set_with_initialized_reader() {
 
 #[test]
 fn test_long_fasta_read_record_set_with_initialized_reader() {
-    let mut out = vec![];
-    let long_fasta = (0..10000).fold(vec![], |mut v, idx| {
-        let fastq = format!(">id{}\nATGC\n", idx);
-        v.extend_from_slice(fastq.as_bytes());
-        v
-    });
+    use std::io::Write;
+    let mut long_fasta = Vec::with_capacity(13 * 100);
+    for i in 0..10000 {
+        write!(&mut long_fasta, ">id{}\nATGC\n", i).unwrap();
+    }
 
     let mut rdr = Reader::new(&long_fasta[..]);
+    let mut out = vec![];
 
     // Read + Write the first record
     if let Some(Ok(r)) = rdr.next() {

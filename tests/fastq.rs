@@ -368,13 +368,14 @@ fn test_fastq_read_record_set_with_initialized_reader() {
 
 #[test]
 fn test_long_fastq_read_record_set_with_initialized_reader() {
-    let mut out = vec![];
-    let long_fastq = (0..10000).fold(vec![], |mut v, idx| {
-        let fastq = format!("@id{}\nATGC\n+\n~~~~\n", idx);
-        v.extend_from_slice(fastq.as_bytes());
-        v
-    });
+    use std::io::Write;
+    let mut long_fastq = Vec::with_capacity(19 * 100);
+    for i in 0..10000 {
+        write!(&mut long_fastq, "@id{}\nATGC\n+\n~~~~\n", i).unwrap();
+    }
+
     let mut rdr = Reader::new(&long_fastq[..]);
+    let mut out = vec![];
 
     // Read + Write the first record
     if let Some(Ok(r)) = rdr.next() {
@@ -397,7 +398,7 @@ fn test_long_fastq_read_record_set_with_initialized_reader() {
 #[test]
 fn test_fastq_mixed_read_seek() {
     use io::{Write, Cursor};
-    let mut fastq = Vec::with_capacity(20 * 100);
+    let mut fastq = Vec::with_capacity(19 * 100);
     let mut l5 = 0;
     for i in 1..101 {
         if i == 5 {
