@@ -1,6 +1,6 @@
 # seq_io change log
 
-## v0.3.3 (Jan xx, 2025)
+## v0.3.3 (Jan 28, 2025)
 
 * Some internal refactoring with the aim to always correctly handle mixed calls
   to `next()`, `read_record_set()` and `seek()`.
