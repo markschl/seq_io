@@ -197,6 +197,35 @@ fn test_fastq_recset() {
 }
 
 #[test]
+fn test_fastq_read_record_set_limited() {
+    for max_records in 3..10 {
+        let mut fastq_vec: Vec<u8> = Vec::with_capacity(FASTQ.len() * max_records);
+        for i in 0..max_records {
+            println!("i: {i} max_records: {max_records}");
+            fastq_vec.extend_from_slice(FASTQ);
+        }
+
+        let mut reader = Reader::new(&fastq_vec[..]);
+        let mut rset = RecordSet::default();
+        reader.read_record_set_limited(&mut rset, max_records);
+        assert_eq!(rset.len(), max_records);
+
+        let mut rset_iter = rset.into_iter();
+        let mut reader = Reader::new(&fastq_vec[..]);
+
+        for _ in 0..max_records {
+            let r0 = reader.next().unwrap().unwrap();
+            let rec = rset_iter.next().unwrap();
+            assert_eq!(rec.id(), r0.id());
+            assert_eq!(rec.desc(), r0.desc());
+            assert_eq!(rec.head(), r0.head());
+            assert_eq!(rec.seq(), r0.seq());
+            assert_eq!(rec.qual(), r0.qual());
+        }
+    }
+}
+
+#[test]
 fn test_fastq_parallel() {
     for cap in 3..400 {
         let par_reader = Reader::with_capacity(FASTQ, cap);

@@ -98,6 +98,34 @@ fn test_fasta_seq_lines() {
 }
 
 #[test]
+fn test_fastq_read_record_set_limited() {
+    for max_records in 3..10 {
+        use std::io::Write;
+        let mut fasta_vec = Vec::with_capacity(13 * max_records);
+        for i in 0..max_records {
+            write!(&mut fasta_vec, ">id{i}\nATGC\n").unwrap();
+        }
+
+        let mut reader = Reader::new(&fasta_vec[..]);
+        let mut rset = RecordSet::default();
+        reader.read_record_set_limited(&mut rset, max_records);
+        assert_eq!(rset.len(), max_records);
+
+        let mut rset_iter = rset.into_iter();
+        let mut reader = Reader::new(&fasta_vec[..]);
+
+        for _ in 0..max_records {
+            let r0 = reader.next().unwrap().unwrap();
+            let rec = rset_iter.next().unwrap();
+            assert_eq!(rec.id(), r0.id());
+            assert_eq!(rec.desc(), r0.desc());
+            assert_eq!(rec.head(), r0.head());
+            assert_eq!(rec.seq(), r0.seq());
+        }
+    }
+}
+
+#[test]
 fn test_fasta_full_seq() {
     use std::borrow::Cow;
     let mut reader = Reader::new(&b">id\nATGC\n"[..]);

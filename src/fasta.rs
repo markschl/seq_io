@@ -254,6 +254,19 @@ where
     // TODO: in next major version, return Result<bool> instead!
     #[inline]
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
+        self.read_record_set_limited(rset, usize::MAX)
+    }
+
+    /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
+    /// buffer are just copied over to the record set and the positions of all records are found.
+    /// Old data will be erased. Returns `None` if the input reached its end.
+    // TODO: in next major version, return Result<bool> instead!
+    #[inline]
+    pub fn read_record_set_limited(
+        &mut self,
+        rset: &mut RecordSet,
+        max_records: usize,
+    ) -> Option<Result<(), Error>> {
         // after read_record_set(), the state is always Positioned, Parsing or Finished
         match self.state {
             State::New => {
@@ -312,6 +325,9 @@ where
             }
             rset.npos += 1;
             self.increment_record();
+            if rset.npos >= max_records {
+                break;
+            }
         }
 
         rset.buffer.clear();
