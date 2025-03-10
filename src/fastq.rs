@@ -224,6 +224,7 @@ where
         rset: &mut RecordSet,
         max_records: usize,
     ) -> Option<Result<(), Error>> {
+        debug_assert!(max_records > 0);
         // after read_record_set(), the state is always Positioned, Parsing or Finished
         match self.state {
             State::New => {

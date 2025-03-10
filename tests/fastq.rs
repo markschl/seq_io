@@ -198,16 +198,16 @@ fn test_fastq_recset() {
 
 #[test]
 fn test_fastq_read_record_set_limited() {
-    for max_records in 3..10 {
-        let mut fastq_vec: Vec<u8> = Vec::with_capacity(FASTQ.len() * max_records);
-        for i in 0..max_records {
-            println!("i: {i} max_records: {max_records}");
-            fastq_vec.extend_from_slice(FASTQ);
+    let fastq_record = b"@id\nATGC\n+\nJJJJ\n";
+    for max_records in 1..10 {
+        let mut fastq_vec: Vec<u8> = Vec::with_capacity(fastq_record.len() * max_records);
+        for _ in 0..max_records {
+            fastq_vec.extend_from_slice(fastq_record);
         }
-
+        
         let mut reader = Reader::new(&fastq_vec[..]);
         let mut rset = RecordSet::default();
-        reader.read_record_set_limited(&mut rset, max_records);
+        reader.read_record_set_limited(&mut rset, max_records).unwrap().unwrap();
         assert_eq!(rset.len(), max_records);
 
         let mut rset_iter = rset.into_iter();
@@ -221,6 +221,20 @@ fn test_fastq_read_record_set_limited() {
             assert_eq!(rec.head(), r0.head());
             assert_eq!(rec.seq(), r0.seq());
             assert_eq!(rec.qual(), r0.qual());
+        }
+        assert!(reader.next().is_none());
+        assert!(rset_iter.next().is_none());
+
+        // fixed number (can be more or less than max_records)
+        let mut reader = Reader::new(&fastq_vec[..]);
+        let n = 5;
+        reader.read_record_set_limited(&mut rset, n);
+        assert_eq!(rset.len(), n.min(max_records));
+        assert_eq!(rset.into_iter().count(), n.min(max_records));
+        if n >= max_records {
+            assert!(reader.next().is_none());
+        } else {
+            assert!(reader.next().is_some());
         }
     }
 }
