@@ -204,10 +204,13 @@ fn test_fastq_read_record_set_limited() {
         for _ in 0..max_records {
             fastq_vec.extend_from_slice(fastq_record);
         }
-        
+
         let mut reader = Reader::new(&fastq_vec[..]);
         let mut rset = RecordSet::default();
-        reader.read_record_set_limited(&mut rset, max_records).unwrap().unwrap();
+        reader
+            .read_record_set_limited(&mut rset, max_records)
+            .unwrap()
+            .unwrap();
         assert_eq!(rset.len(), max_records);
 
         let mut rset_iter = rset.into_iter();

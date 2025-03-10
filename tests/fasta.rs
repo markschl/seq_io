@@ -108,7 +108,10 @@ fn test_fasta_read_record_set_limited() {
 
         let mut reader = Reader::new(&fasta_vec[..]);
         let mut rset = RecordSet::default();
-        reader.read_record_set_limited(&mut rset, max_records).unwrap().unwrap();
+        reader
+            .read_record_set_limited(&mut rset, max_records)
+            .unwrap()
+            .unwrap();
         assert_eq!(rset.len(), max_records);
 
         let mut rset_iter = rset.into_iter();
