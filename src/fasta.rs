@@ -1035,14 +1035,28 @@ pub struct RecordSet {
 }
 
 impl RecordSet {
+    /// Returns the number of records in the record set
     #[inline]
     pub fn len(&self) -> usize {
         self.npos
     }
 
+    /// Returns true if there are no records in the set
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Returns the capacity of the record set buffer
+    #[inline]
+    pub fn buf_capacity(&self) -> usize {
+        self.buffer.capacity()
+    }
+
+    /// Shrinks the internal buffer to fit the data.
+    /// This can be useful to reduce excessive memory usage.
+    pub fn shrink_buffer_to_fit(&mut self) {
+        self.buffer.shrink_to_fit();
     }
 }
 
