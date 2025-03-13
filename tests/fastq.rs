@@ -199,45 +199,49 @@ fn test_fastq_recset() {
 #[test]
 fn test_fastq_read_record_set_limited() {
     let fastq_record = b"@id\nATGC\n+\nJJJJ\n";
-    for max_records in 1..10 {
-        let mut fastq_vec: Vec<u8> = Vec::with_capacity(fastq_record.len() * max_records);
-        for _ in 0..max_records {
+    for n_records in 1..10 {
+        // dbg!(record_limit);
+        let mut fastq_vec: Vec<u8> = Vec::with_capacity(fastq_record.len() * n_records);
+        for _ in 0..n_records {
             fastq_vec.extend_from_slice(fastq_record);
         }
 
-        let mut reader = Reader::new(&fastq_vec[..]);
-        let mut rset = RecordSet::default();
-        reader
-            .read_record_set_limited(&mut rset, max_records)
-            .unwrap()
-            .unwrap();
-        assert_eq!(rset.len(), max_records);
+        for cap in (3..(fastq_vec.len() + 20)).step_by(10) {
+            // dbg!(cap);
+            let mut rset = RecordSet::default();
+            let mut reader = Reader::with_capacity(&fastq_vec[..], cap);
+            reader
+                .read_record_set_exact(&mut rset, Some(n_records))
+                .unwrap()
+                .unwrap();
+            assert_eq!(rset.len(), n_records);
 
-        let mut rset_iter = rset.into_iter();
-        let mut reader = Reader::new(&fastq_vec[..]);
+            let mut rset_iter = rset.into_iter();
+            let mut reader = Reader::new(&fastq_vec[..]);
 
-        for _ in 0..max_records {
-            let r0 = reader.next().unwrap().unwrap();
-            let rec = rset_iter.next().unwrap();
-            assert_eq!(rec.id(), r0.id());
-            assert_eq!(rec.desc(), r0.desc());
-            assert_eq!(rec.head(), r0.head());
-            assert_eq!(rec.seq(), r0.seq());
-            assert_eq!(rec.qual(), r0.qual());
-        }
-        assert!(reader.next().is_none());
-        assert!(rset_iter.next().is_none());
-
-        // fixed number (can be more or less than max_records)
-        let mut reader = Reader::new(&fastq_vec[..]);
-        let n = 5;
-        reader.read_record_set_limited(&mut rset, n);
-        assert_eq!(rset.len(), n.min(max_records));
-        assert_eq!(rset.into_iter().count(), n.min(max_records));
-        if n >= max_records {
+            for _ in 0..n_records {
+                let r0 = reader.next().unwrap().unwrap();
+                let rec = rset_iter.next().unwrap();
+                assert_eq!(rec.id(), r0.id());
+                assert_eq!(rec.desc(), r0.desc());
+                assert_eq!(rec.head(), r0.head());
+                assert_eq!(rec.seq(), r0.seq());
+                assert_eq!(rec.qual(), r0.qual());
+            }
             assert!(reader.next().is_none());
-        } else {
-            assert!(reader.next().is_some());
+            assert!(rset_iter.next().is_none());
+
+            // fixed number (can be more or less than n_records)
+            let mut reader = Reader::with_capacity(&fastq_vec[..], cap);
+            let n = 5;
+            reader.read_record_set_exact(&mut rset, Some(n));
+            assert_eq!(rset.len(), n.min(n_records));
+            assert_eq!(rset.into_iter().count(), n.min(n_records));
+            if n >= n_records {
+                assert!(reader.next().is_none());
+            } else {
+                assert!(reader.records().count() == n_records - n);
+            }
         }
     }
 }

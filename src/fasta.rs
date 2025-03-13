@@ -234,7 +234,7 @@ where
         }
 
         if self.state == State::Incomplete {
-            if !try_opt!(self.resume_incomplete_search()) {
+            if !try_opt!(self.resume_incomplete_search(true)) {
                 return None;
             }
             if self.state != State::Finished {
@@ -248,26 +248,31 @@ where
         }))
     }
 
-    /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
-    /// buffer are just copied over to the record set and the positions of all records are found.
-    /// Old data will be erased. Returns `None` if the input reached its end.
+    /// Updates a [RecordSet](struct.RecordSet.html) with new data.
+    /// The contents of the internal buffer are just copied over to the record set
+    /// and the positions of all records are found, and old data is erased.
+    /// Returns `None` if the input reached its end.
     // TODO: in next major version, return Result<bool> instead!
     #[inline]
     pub fn read_record_set(&mut self, rset: &mut RecordSet) -> Option<Result<(), Error>> {
-        self.read_record_set_limited(rset, usize::MAX)
+        self.read_record_set_exact(rset, None)
     }
 
-    /// Updates a [RecordSet](struct.RecordSet.html) with new data. The contents of the internal
-    /// buffer are just copied over to the record set and the positions of all records are found.
-    /// Old data will be erased. Returns `None` if the input reached its end.
+    /// Updates a [RecordSet](struct.RecordSet.html) with new data.
+    /// In comparison to [read_record_set](#method.read_record_set), this method
+    /// allows specifying the exact number of records that should be read.
+    /// This will grow the internal buffer (and the buffer of the record set)
+    /// as needed, according to the configured [buffer policy](policy).
+    /// Only the last call to `read_record_set_exact` at the end of the input
+    /// can yield less than the specified number of records.
     // TODO: in next major version, return Result<bool> instead!
     #[inline]
-    pub fn read_record_set_limited(
+    pub fn read_record_set_exact(
         &mut self,
         rset: &mut RecordSet,
-        max_records: usize,
+        n_records: Option<usize>,
     ) -> Option<Result<(), Error>> {
-        debug_assert!(max_records > 0);
+        debug_assert!(n_records.unwrap_or(usize::MAX) > 0);
         // after read_record_set(), the state is always Positioned, Parsing or Finished
         match self.state {
             State::New => {
@@ -294,11 +299,12 @@ where
         };
 
         rset.npos = 0;
+        let mut is_new = true;
 
         while self.state != State::Finished {
             if self.state == State::Incomplete {
                 // resume incomplete search after previous read_record_set(), or
-                if !try_opt!(self.resume_incomplete_search()) {
+                if !try_opt!(self.resume_incomplete_search(is_new)) {
                     return None;
                 }
                 // reset state to Positioned
@@ -309,10 +315,19 @@ where
                 // search the next complete record after `next()`, or in
                 // later iterations of this loop
                 if !try_opt!(self.search()) {
+                    // At least one record must be present. If not, continue
+                    // with `resume_incomplete_search()` in next iteration
                     if rset.npos == 0 {
-                        // at least one record must be present; if not, continue
-                        // with `resume_incomplete_search()` in next iteration
                         continue;
+                    }
+                    // Same if an exact number of records is required
+                    if let Some(n) = n_records {
+                        if rset.npos < n {
+                            if is_new {
+                                is_new = false;
+                            }
+                            continue;
+                        }
                     }
                     break;
                 }
@@ -326,8 +341,10 @@ where
             }
             rset.npos += 1;
             self.increment_record();
-            if rset.npos >= max_records {
-                break;
+            if let Some(n) = n_records {
+                if rset.npos == n {
+                    break;
+                }
             }
         }
 
@@ -441,14 +458,16 @@ where
         false
     }
 
-    /// To be called when the end of the buffer is reached and `search` does not find
-    /// the next record. Incomplete bytes will be moved to the start of the buffer.
-    /// If the record still doesn't fit in, the buffer will be enlarged.
-    /// After calling this function, the position will therefore always be 'complete'.
-    /// This function assumes that the buffer was fully searched.
-    fn resume_incomplete_search(&mut self) -> Result<bool, Error> {
+    // To be called when the end of the buffer is reached and `search` does not find
+    // the next record (the buffer *must* be fully searched).
+    // Incomplete bytes are moved to the start of the buffer unless make_room is false.
+    // If the record still doesn't fit in (or make_room is false), the buffer is enlarged.
+    // After calling this function, the record search will therefore always be complete.
+    // Returns true if if another record was found (false if at the end of the input).
+    // **note**: self.state can be modified to State::Finished
+    fn resume_incomplete_search(&mut self, make_room: bool) -> Result<bool, Error> {
         loop {
-            if self.buf_pos.start == 0 {
+            if !make_room || self.buf_pos.start == 0 {
                 // first record -> buffer too small
                 self.grow()?;
             } else {
