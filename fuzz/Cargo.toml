@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 criterion = { version = "0.5", default-features = false }
-bio = "2.0"
+bio = "2.2"
 matches = "0.1"
 
 [package.metadata]
