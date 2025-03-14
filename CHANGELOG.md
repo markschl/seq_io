@@ -1,5 +1,20 @@
 # seq_io change log
 
+## v0.3.4 (Mar 14, 2025)
+
+This release includes a new method called `read_record_set_exact()`, which allows
+specifying the number of records that should be present in a record set.
+This feature is required for parallel processing of paired-end reads
+([see also here](https://github.com/markschl/seq_io/issues/24)).
+Thanks @nh13 for the [contribution](https://github.com/markschl/seq_io/pull/23)
+to this feature.
+
+More changes:
+
+* Added `buf_capacity` and `shrink_buffer_to_fit` to `fasta::RecordSet` and
+  `fastq::RecordSet`, allowing more control over the buffer size.
+
+
 ## v0.3.3 (Jan 28, 2025)
 
 * Some internal refactoring with the aim to always correctly handle mixed calls
